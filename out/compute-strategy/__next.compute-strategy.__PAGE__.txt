@@ -1,0 +1,6 @@
+1:"$Sreact.fragment"
+2:I[78786,["/musical-couscous/_next/static/chunks/0v90e52bsza-c.js","/musical-couscous/_next/static/chunks/0kx3u3u77v4~r.js","/musical-couscous/_next/static/chunks/0u1y8y.hsbp~y.js","/musical-couscous/_next/static/chunks/0kjn~2ps2oain.js","/musical-couscous/_next/static/chunks/0wcygx0ckts4..js"],"ComputeStrategyWizard"]
+3:I[97367,["/musical-couscous/_next/static/chunks/0v90e52bsza-c.js","/musical-couscous/_next/static/chunks/0kx3u3u77v4~r.js"],"OutletBoundary"]
+4:"$Sreact.suspense"
+0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{}],[["$","script","script-0",{"src":"/musical-couscous/_next/static/chunks/0u1y8y.hsbp~y.js","async":true}],["$","script","script-1",{"src":"/musical-couscous/_next/static/chunks/0kjn~2ps2oain.js","async":true}],["$","script","script-2",{"src":"/musical-couscous/_next/static/chunks/0wcygx0ckts4..js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"3llxMPUF28ZcZOTrKMqfH"}
+5:null
