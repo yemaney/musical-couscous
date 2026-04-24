@@ -1,6 +1,6 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -30,8 +30,6 @@ const GCPIcon = () => (
 )
 
 export function ProviderSelection() {
-  const router = useRouter()
-
   const providers = [
     {
       id: "aws",
@@ -56,8 +54,8 @@ export function ProviderSelection() {
       bgLight: "bg-blue-50",
       border: "border-blue-200",
       text: "text-blue-900",
-      active: false,
-      path: "#"
+      active: true,
+      path: "/gcp/cloud-setup"
     }
   ]
 
@@ -81,18 +79,21 @@ export function ProviderSelection() {
         {/* Provider Cards */}
         <div className="grid md:grid-cols-2 gap-8">
           {providers.map((provider, index) => (
-            <Card 
-              key={provider.id}
-              className={cn(
-                "relative overflow-hidden border-2 transition-all duration-300 group cursor-pointer",
-                provider.active 
-                  ? cn(provider.border, "hover:shadow-2xl hover:-translate-y-2") 
-                  : "opacity-60 grayscale cursor-not-allowed",
-                "animate-in fade-in zoom-in-95 duration-700",
-                index === 1 && "delay-200"
-              )}
-              onClick={() => provider.active && router.push(provider.path)}
+            <Link 
+              key={provider.id} 
+              href={provider.active ? provider.path : "#"}
+              className={cn(!provider.active && "pointer-events-none")}
             >
+              <Card 
+                className={cn(
+                  "relative h-full overflow-hidden border-2 transition-all duration-300 group cursor-pointer",
+                  provider.active 
+                    ? cn(provider.border, "hover:shadow-2xl hover:-translate-y-2") 
+                    : "opacity-60 grayscale cursor-not-allowed",
+                  "animate-in fade-in zoom-in-95 duration-700",
+                  index === 1 && "delay-200"
+                )}
+              >
               {provider.active && (
                 <div className={cn("absolute top-0 right-0 p-4", provider.text)}>
                   <div className="flex items-center gap-1 text-xs font-bold uppercase tracking-widest">
@@ -147,6 +148,7 @@ export function ProviderSelection() {
                 </div>
               </CardContent>
             </Card>
+          </Link>
           ))}
         </div>
 
