@@ -69,7 +69,7 @@ export function ProviderSelection() {
             <span>Infrastructure Provisioning</span>
           </div>
           <h1 className="text-5xl font-black tracking-tight text-slate-900 sm:text-6xl animate-in fade-in slide-in-from-top-6 duration-1000">
-            Choose Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">Cloud Provider</span>
+            Choose Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">Cloud Platform</span>
           </h1>
           <p className="text-xl text-slate-600 max-w-2xl mx-auto animate-in fade-in slide-in-from-top-8 duration-1000 delay-200">
             Select the platform where you want to deploy your high-performance data infrastructure.
