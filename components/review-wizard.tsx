@@ -288,7 +288,9 @@ export function ReviewWizard() {
                     <div>
                       <span className="font-bold block mb-1 uppercase tracking-wider opacity-50">Storage & Encryption</span>
                       <p>Buckets: production-data-assets</p>
-                      <p>KMS: AWS Managed Key (Symmetric)</p>
+                      <p className="truncate" title={cloudState.provisioningOutputs?.KmsKeyArn || "AWS Managed Key (Symmetric)"}>
+                        KMS: {cloudState.provisioningOutputs?.KmsKeyArn || "AWS Managed Key (Symmetric)"}
+                      </p>
                     </div>
                   </div>
                 </div>

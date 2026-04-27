@@ -479,6 +479,24 @@ export function ClusterSetupWizard() {
                   </div>
                 )}
 
+                {state.kmsKeyArn && (
+                  <div className="space-y-2 pt-2 border-t border-dashed mt-4">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-muted-foreground font-semibold flex items-center gap-2">
+                        <Lock className="w-3.5 h-3.5" />
+                        Data Encryption Key
+                      </Label>
+                      <HelperTooltip text="Used to encrypt your system secrets and configuration data at rest." />
+                    </div>
+                    <div className="ml-6">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">KMS Key ARN</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
+                        {state.kmsKeyArn}
+                      </code>
+                    </div>
+                  </div>
+                )}
+
                 {state.karpenterRoleArn && (
                   <div className="space-y-2 pt-2">
                     <div className="flex items-center gap-2">

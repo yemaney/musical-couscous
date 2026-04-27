@@ -4,6 +4,7 @@ import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -70,6 +71,7 @@ interface WizardState {
   securityGroupIds: string
   networkCidr: string
   serviceCidr: string
+  useOwnVpc: boolean
   // Storage fields
   s3UserOption: S3UserOption
   s3BucketName: string
@@ -93,8 +95,9 @@ const initialState: WizardState = {
   subnetIds: "",
   publicSubnetIds: "",
   securityGroupIds: "",
-  networkCidr: "",
-  serviceCidr: "",
+  networkCidr: "10.0.0.0/16",
+  serviceCidr: "172.20.0.0/16",
+  useOwnVpc: true,
   s3UserOption: "create",
   s3BucketName: "",
   accessKeyId: "",
@@ -347,8 +350,15 @@ export function CloudSetupWizard() {
     if (state.setupMode === "recommended") {
       params.push("CreateNetwork=true")
     } else {
-      params.push("CreateNetwork=false")
-      params.push(`ExistingVpcId=${state.vpcId || "<vpc-id>"}`)
+      // Advanced mode
+      if (state.useOwnVpc) {
+        params.push("CreateNetwork=false")
+      } else {
+        params.push("CreateNetwork=true")
+        if (state.networkCidr && state.networkCidr !== "10.0.0.0/16") {
+          params.push(`VpcCidr=${state.networkCidr}`)
+        }
+      }
     }
 
     // Common Network Parameters
@@ -466,66 +476,88 @@ export function CloudSetupWizard() {
 
                 {state.setupMode === "advanced" && (
                   <div className="pt-8 border-t space-y-6 animate-in slide-in-from-top-4 duration-500">
-                    <div className="grid sm:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">VPC ID</Label>
-                        <Input
-                          placeholder="vpc-xxxxxxxxx"
-                          value={state.vpcId}
-                          onChange={(e) => updateState({ vpcId: e.target.value })}
-                          className="h-12 rounded-xl"
-                        />
+                    <div className="flex items-center justify-between p-4 rounded-xl border bg-muted/30 shadow-sm">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <Label className="text-sm font-bold">Use my own VPC</Label>
+                          <Badge variant="secondary" className="text-[10px] uppercase px-1.5 py-0">Bring-Your-Own</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Connect to your existing infrastructure instead of creating new resources.</p>
                       </div>
+                      <Switch
+                        checked={state.useOwnVpc}
+                        onCheckedChange={(checked) => updateState({ useOwnVpc: checked })}
+                      />
+                    </div>
+
+                    {state.useOwnVpc && (
+                      /* Existing VPC Fields */
+                      <div className="space-y-6 animate-in slide-in-from-top-4 duration-300">
+                        <div className="grid sm:grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">VPC ID</Label>
+                            <Input
+                              placeholder="vpc-xxxxxxxxx"
+                              value={state.vpcId}
+                              onChange={(e) => updateState({ vpcId: e.target.value })}
+                              className="h-12 rounded-xl"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Security Group ID</Label>
+                            <Input
+                              placeholder="sg-xxxxxxxxx"
+                              value={state.securityGroupIds}
+                              onChange={(e) => updateState({ securityGroupIds: e.target.value })}
+                              className="h-12 rounded-xl"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid sm:grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Private Subnet IDs</Label>
+                            <Input
+                              placeholder="subnet-xxx, subnet-yyy"
+                              value={state.subnetIds}
+                              onChange={(e) => updateState({ subnetIds: e.target.value })}
+                              className="h-12 rounded-xl"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Public Subnet IDs</Label>
+                            <Input
+                              placeholder="subnet-aaa, subnet-bbb"
+                              value={state.publicSubnetIds}
+                              onChange={(e) => updateState({ publicSubnetIds: e.target.value })}
+                              className="h-12 rounded-xl"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CIDR Configuration (Always shown in Advanced) */}
+                    <div className="grid sm:grid-cols-2 gap-6 animate-in slide-in-from-top-4 duration-300 border-t pt-6 mt-6">
                       <div className="space-y-2">
-                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Network CIDR</Label>
+                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">VPC CIDR</Label>
                         <Input
                           placeholder="10.0.0.0/16"
-                          value={state.networkCidr}
+                          value={state.networkCidr || "10.0.0.0/16"}
                           onChange={(e) => updateState({ networkCidr: e.target.value })}
                           className="h-12 rounded-xl"
                         />
-                      </div>
-                    </div>
-
-                    <div className="grid sm:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Private Subnet IDs</Label>
-                        <Input
-                          placeholder="subnet-xxx, subnet-yyy"
-                          value={state.subnetIds}
-                          onChange={(e) => updateState({ subnetIds: e.target.value })}
-                          className="h-12 rounded-xl"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Public Subnet IDs</Label>
-                        <Input
-                          placeholder="subnet-aaa, subnet-bbb"
-                          value={state.publicSubnetIds}
-                          onChange={(e) => updateState({ publicSubnetIds: e.target.value })}
-                          className="h-12 rounded-xl"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid sm:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Security Group ID</Label>
-                        <Input
-                          placeholder="sg-xxxxxxxxx"
-                          value={state.securityGroupIds}
-                          onChange={(e) => updateState({ securityGroupIds: e.target.value })}
-                          className="h-12 rounded-xl"
-                        />
+                        <p className="text-[10px] text-muted-foreground italic">The IP range of the {state.useOwnVpc ? "existing" : "new"} VPC</p>
                       </div>
                       <div className="space-y-2">
                         <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">EKS Service CIDR</Label>
                         <Input
                           placeholder="172.20.0.0/16"
-                          value={state.serviceCidr}
+                          value={state.serviceCidr || "172.20.0.0/16"}
                           onChange={(e) => updateState({ serviceCidr: e.target.value })}
                           className="h-12 rounded-xl"
                         />
+                        <p className="text-[10px] text-muted-foreground italic">The internal range for Kubernetes services</p>
                       </div>
                     </div>
                   </div>
@@ -864,19 +896,22 @@ export function CloudSetupWizard() {
   const canGoNext = () => {
     switch (currentStep) {
       case 2:
-        // Network step - only require full details in advanced mode
-        if (state.setupMode === "recommended") {
-          return state.region !== ""
+        // Network step
+        if (state.setupMode === "recommended") return !!state.region
+        
+        // Advanced mode
+        if (state.useOwnVpc) {
+          return !!(
+            state.region &&
+            state.vpcId &&
+            state.subnetIds &&
+            state.publicSubnetIds &&
+            state.securityGroupIds
+          )
         }
-        return (
-          state.region !== "" &&
-          state.vpcId.trim() !== "" &&
-          state.subnetIds.trim() !== "" &&
-          state.publicSubnetIds.trim() !== "" &&
-          state.securityGroupIds.trim() !== "" &&
-          state.networkCidr.trim() !== "" &&
-          state.serviceCidr.trim() !== ""
-        )
+        
+        // Advanced Custom Network mode - very permissive for now
+        return !!(state.region && state.networkCidr && state.serviceCidr)
       case 3:
         // Storage step - bucket name required, and if not creating user, keys are required
         const bucketOk = state.s3BucketName.trim() !== ""
