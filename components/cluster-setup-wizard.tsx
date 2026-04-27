@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   HelpCircle,
   Shield,
   Globe,
@@ -63,18 +64,29 @@ const AWS_REGIONS = [
 interface ClusterState {
   // Basic
   clusterName: string
+  subdomain: string
+  projectId: string
   region: string
+  az1: string
+  az2: string
   // Security (auto-configured)
   orchestratorRoleArn: string
   nodeGroupRoleArn: string
+  clusterRoleArn: string
+  karpenterRoleArn: string
   kmsKeyArn: string
+  veleroRoleArn: string
   // Networking
   vpcId: string
+  vpcCidr: string
   subnetIds: string
+  publicSubnetIds: string
   securityGroupIds: string
+  clusterSecurityGroupId: string
   // Advanced
   serviceCidr: string
-  kubernetesVersion: string
+  // Provisioned Outputs
+  provisioningOutputs?: Record<string, string>
 }
 
 // We will load this from localStorage in the component
@@ -161,15 +173,24 @@ export function ClusterSetupWizard() {
   const [previousSetupMode, setPreviousSetupMode] = useState<"recommended" | "advanced">("recommended")
   const [state, setState] = useState<ClusterState>({
     clusterName: "",
+    subdomain: "",
+    projectId: "",
     region: "us-east-1",
+    az1: "",
+    az2: "",
     orchestratorRoleArn: "",
     nodeGroupRoleArn: "",
+    clusterRoleArn: "",
+    karpenterRoleArn: "",
     kmsKeyArn: "",
+    veleroRoleArn: "",
     vpcId: "",
+    vpcCidr: "",
     subnetIds: "",
+    publicSubnetIds: "",
     securityGroupIds: "",
+    clusterSecurityGroupId: "",
     serviceCidr: "172.20.0.0/16",
-    kubernetesVersion: "1.29",
   })
 
   // Load data from previous step
@@ -179,11 +200,49 @@ export function ClusterSetupWizard() {
       try {
         const cloudState = JSON.parse(savedState)
         setPreviousSetupMode(cloudState.setupMode || "recommended")
+        
+        const outputs = cloudState.provisioningOutputs || {}
+        
         setState(prev => ({
           ...prev,
-          vpcId: cloudState.vpcId || prev.vpcId,
-          subnetIds: cloudState.subnetIds || prev.subnetIds,
-          securityGroupIds: cloudState.securityGroupIds || prev.securityGroupIds,
+          region: cloudState.region || prev.region,
+          az1: cloudState.az1 || prev.az1,
+          az2: cloudState.az2 || prev.az2,
+          vpcId: outputs.VpcId || cloudState.vpcId || prev.vpcId,
+          vpcCidr: outputs.VpcCidrBlock || prev.vpcCidr,
+          subnetIds: (() => {
+            if (outputs.PrivateSubnetIds) {
+              try {
+                const subnets = JSON.parse(outputs.PrivateSubnetIds)
+                return Array.isArray(subnets) ? subnets.join(", ") : outputs.PrivateSubnetIds
+              } catch {
+                return outputs.PrivateSubnetIds
+              }
+            }
+            return cloudState.subnetIds || prev.subnetIds
+          })(),
+          publicSubnetIds: (() => {
+            if (outputs.PublicSubnetIds) {
+              try {
+                const subnets = JSON.parse(outputs.PublicSubnetIds)
+                return Array.isArray(subnets) ? subnets.join(", ") : outputs.PublicSubnetIds
+              } catch {
+                return outputs.PublicSubnetIds
+              }
+            }
+            return prev.publicSubnetIds
+          })(),
+          securityGroupIds: outputs.NodeSecurityGroupId || cloudState.securityGroupIds || prev.securityGroupIds,
+          clusterSecurityGroupId: outputs.ClusterSecurityGroupId || prev.clusterSecurityGroupId,
+          orchestratorRoleArn: outputs.OrchestratorRoleArn || prev.orchestratorRoleArn,
+          nodeGroupRoleArn: outputs.EksNodeGroupRoleArn || prev.nodeGroupRoleArn,
+          clusterRoleArn: outputs.EksClusterRoleArn || prev.clusterRoleArn,
+          karpenterRoleArn: outputs.KarpenterControllerRoleArn || prev.karpenterRoleArn,
+          kmsKeyArn: outputs.KmsKeyArn || prev.kmsKeyArn,
+          veleroRoleArn: outputs.VeleroServerRoleArn || prev.veleroRoleArn,
+          subdomain: outputs.Subdomain || prev.subdomain,
+          projectId: outputs.ProjectId || prev.projectId,
+          provisioningOutputs: outputs,
         }))
       } catch (e) {
         console.error("Failed to load previous step data", e)
@@ -191,15 +250,21 @@ export function ClusterSetupWizard() {
     }
   }, [])
 
-  // Auto-generate cluster name on mount
+  // Set cluster name from provisioned data or generate one
   useEffect(() => {
-    if (!state.clusterName) {
+    if (state.subdomain && state.projectId) {
+      setState((prev) => ({ ...prev, clusterName: `${state.subdomain}-${state.projectId}` }))
+    } else if (!state.clusterName) {
       setState((prev) => ({ ...prev, clusterName: generateClusterName() }))
     }
-  }, [state.clusterName])
+  }, [state.subdomain, state.projectId, state.clusterName])
 
   const updateState = (updates: Partial<ClusterState>) => {
-    setState((prev) => ({ ...prev, ...updates }))
+    setState((prev) => {
+      const next = { ...prev, ...updates }
+      localStorage.setItem("clusterSetupState", JSON.stringify(next))
+      return next
+    })
   }
 
   const isRecommendedMode = previousSetupMode === "recommended"
@@ -215,13 +280,13 @@ export function ClusterSetupWizard() {
   const allValid = Object.values(validations).every(Boolean)
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-32">
       <div className="max-w-2xl mx-auto px-4 py-12">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-foreground">AWS Settings</h1>
+          <h1 className="text-3xl font-bold text-foreground">Your System Configuration</h1>
           <p className="mt-2 text-muted-foreground">
-            Configure your cluster foundation and security
+            Review your system details — these are automatically filled in for you.
           </p>
         </div>
 
@@ -248,45 +313,15 @@ export function ClusterSetupWizard() {
                 <div className="p-2 rounded-lg bg-emerald-100">
                   <Globe className="w-5 h-5 text-emerald-600" />
                 </div>
-                <h2 className="font-semibold text-lg text-foreground">Basic Setup</h2>
+                <h2 className="font-semibold text-lg text-foreground">System Identity</h2>
               </div>
 
               <div className="space-y-6">
-                {/* Region */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="region">Region</Label>
-                    <HelperTooltip text="The AWS region where your cluster will be created" />
-                  </div>
-                  <Select
-                    value={state.region}
-                    onValueChange={(value) => updateState({ region: value })}
-                  >
-                    <SelectTrigger id="region" className="w-full">
-                      <SelectValue placeholder="Select a region" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {AWS_REGIONS.map((region) => (
-                        <SelectItem key={region.value} value={region.value}>
-                          <div className="flex items-center gap-2">
-                            <span>{region.label}</span>
-                            {region.recommended && (
-                              <span className="text-xs text-emerald-600 font-medium">
-                                Recommended
-                              </span>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 {/* Cluster Name */}
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Label htmlFor="clusterName">Cluster Name</Label>
-                    <HelperTooltip text="A unique name for your cluster" />
+                    <Label htmlFor="clusterName">System Name</Label>
+                    <HelperTooltip text="A unique ID for your system. This is automatically assigned." />
                   </div>
                   <div className="flex gap-2">
                     <Input
@@ -307,191 +342,196 @@ export function ClusterSetupWizard() {
 
         {/* Collapsible Sections */}
         <div className="space-y-4 mb-8">
+          {/* Network Foundation Section */}
+          <SectionCard
+            title="Your Private Network"
+            icon={Network}
+            badge="Read-only · Auto-filled"
+            defaultOpen={false}
+          >
+            <div className="space-y-6 pt-4">
+              <p className="text-sm text-muted-foreground">
+                Your system will run inside the private network that was already set up for you. These values were imported from your setup file.
+              </p>
+
+              <div className="grid gap-4">
+                <div className="space-y-1">
+                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Network ID</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-0.5">Your private network's unique identifier</p>
+                    <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                      {state.vpcId || "Pending..."}
+                    </code>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                   <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Network Range</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                        {state.vpcCidr || "Pending..."}
+                      </code>
+                   </div>
+                   <div className="space-y-1">
+                     <div className="flex items-center gap-2 mb-1">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground m-0">System Internal Range</Label>
+                        <HelperTooltip text="The internal IP range used only by your system's components. Default is fine for most setups." />
+                     </div>
+                     <Input
+                        id="serviceCidr"
+                        value={state.serviceCidr}
+                        onChange={(e) => updateState({ serviceCidr: e.target.value })}
+                        placeholder="172.20.0.0/16"
+                        className="h-8 text-[10px] font-mono"
+                      />
+                   </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Private Connection Points</Label>
+                  <p className="text-[10px] text-muted-foreground -mt-0.5">Internal access points for your system's servers</p>
+                  <code className="block p-2 bg-muted rounded text-[10px] font-mono border break-all">
+                    {state.subnetIds || "Pending..."}
+                  </code>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Public Connection Points</Label>
+                  <p className="text-[10px] text-muted-foreground -mt-0.5">External access points for internet-facing services</p>
+                  <code className="block p-2 bg-muted rounded text-[10px] font-mono border break-all">
+                    {state.publicSubnetIds || "Pending..."}
+                  </code>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                   <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Server Firewall</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-0.5">Controls network access to your servers</p>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                        {state.securityGroupIds || "Pending..."}
+                      </code>
+                   </div>
+                   <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">System Firewall</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-0.5">Controls network access to your system</p>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                        {state.clusterSecurityGroupId || "Pending..."}
+                      </code>
+                   </div>
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+
           {/* Security Section */}
           <SectionCard
-            title="Security"
+            title="Security Permissions"
             icon={Shield}
-            badge="Auto-configured"
+            badge="Read-only · Auto-filled"
             defaultOpen={false}
           >
             <div className="space-y-4 pt-4">
               <p className="text-sm text-muted-foreground">
-                These settings are automatically configured to keep your cluster secure.
+                These permissions were automatically set up to keep your system secure. No action needed.
               </p>
 
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label className="text-muted-foreground">Deployment Permissions</Label>
-                    <HelperTooltip text="This allows us to securely create your infrastructure" />
+                {state.orchestratorRoleArn && (
+                  <div className="space-y-2 pt-2">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-muted-foreground">Deployment Permission</Label>
+                      <HelperTooltip text="Allows the system to automatically provision your infrastructure on your behalf." />
+                    </div>
+                    <div className="ml-6">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
+                        {state.orchestratorRoleArn}
+                      </code>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-emerald-600">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Configured automatically</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1 ml-6">
-                    We secure your deployment using an orchestrator role with strictly bounded permissions.
-                  </p>
-                </div>
+                )}
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label className="text-muted-foreground">Data Encryption</Label>
-                    <HelperTooltip text="Your data is encrypted at rest using AWS KMS" />
+                {state.nodeGroupRoleArn && (
+                  <div className="space-y-2 pt-2">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-muted-foreground">Server Permission</Label>
+                      <HelperTooltip text="Allows your compute servers to operate securely within your account." />
+                    </div>
+                    <div className="ml-6">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
+                        {state.nodeGroupRoleArn}
+                      </code>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-emerald-600">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Enabled by default</span>
+                )}
+
+                {state.clusterRoleArn && (
+                  <div className="space-y-2 pt-2">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-muted-foreground">System Management Permission</Label>
+                      <HelperTooltip text="Allows the system's control center to manage your servers and networking." />
+                    </div>
+                    <div className="ml-6">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
+                        {state.clusterRoleArn}
+                      </code>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {state.karpenterRoleArn && (
+                  <div className="space-y-2 pt-2">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-muted-foreground">Auto-scaling Permission</Label>
+                      <HelperTooltip text="Allows the system to automatically add or remove servers based on demand." />
+                    </div>
+                    <div className="ml-6">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
+                        {state.karpenterRoleArn}
+                      </code>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </SectionCard>
 
-          {/* Networking Section - Only show if Advanced mode */}
-          {!isRecommendedMode && (
-            <SectionCard
-              title="Networking"
-              icon={Network}
-              badge="From previous step"
-              defaultOpen={false}
-            >
-              <div className="space-y-4 pt-4">
-                <p className="text-sm text-muted-foreground">
-                  Using the network settings you provided earlier.
-                </p>
-
-                <div className="grid gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-muted-foreground">VPC</Label>
-                    <Input
-                      value={state.vpcId}
-                      onChange={(e) => updateState({ vpcId: e.target.value })}
-                      placeholder="vpc-xxxxxxxxx"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-muted-foreground">Subnets</Label>
-                    <Input
-                      value={state.subnetIds}
-                      onChange={(e) => updateState({ subnetIds: e.target.value })}
-                      placeholder="subnet-xxx, subnet-yyy"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-muted-foreground">Security Groups</Label>
-                    <Input
-                      value={state.securityGroupIds}
-                      onChange={(e) => updateState({ securityGroupIds: e.target.value })}
-                      placeholder="sg-xxx, sg-yyy"
-                    />
-                  </div>
-                </div>
-              </div>
-            </SectionCard>
-          )}
-
-          {/* Advanced Section */}
-          <SectionCard title="Advanced Settings" icon={Settings} defaultOpen={false}>
-            <div className="space-y-4 pt-4">
-              <p className="text-sm text-muted-foreground">
-                These settings are for advanced users. Most users can leave these as-is.
-              </p>
-
-              <div className="grid gap-4">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="serviceCidr">Internal Network Range (advanced)</Label>
-                    <HelperTooltip text="IP address range for Kubernetes services" />
-                  </div>
-                  <Input
-                    id="serviceCidr"
-                    value={state.serviceCidr}
-                    onChange={(e) => updateState({ serviceCidr: e.target.value })}
-                    placeholder="172.20.0.0/16"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Default: 172.20.0.0/16
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="k8sVersion">Kubernetes Version</Label>
-                    <HelperTooltip text="The version of Kubernetes to run" />
-                  </div>
-                  <Select
-                    value={state.kubernetesVersion}
-                    onValueChange={(value) => updateState({ kubernetesVersion: value })}
-                  >
-                    <SelectTrigger id="k8sVersion">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1.29">
-                        <div className="flex items-center gap-2">
-                          <span>1.29</span>
-                          <span className="text-xs text-emerald-600 font-medium">
-                            Recommended
-                          </span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="1.28">1.28</SelectItem>
-                      <SelectItem value="1.27">1.27</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-          </SectionCard>
         </div>
 
         {/* Validation Summary */}
         <Card className="mb-8">
           <CardContent className="p-4">
             <div className="flex flex-wrap gap-4">
-              <ValidationBadge valid={validations.clusterName} label="Cluster name set" />
-              <ValidationBadge valid={validations.region} label="Region selected" />
-              <ValidationBadge valid={validations.permissions} label="Permissions ready" />
-              <ValidationBadge valid={validations.encryption} label="Encryption enabled" />
+              <ValidationBadge valid={validations.region} label="Your location is set" />
+              <ValidationBadge valid={validations.permissions} label="Your permissions are ready" />
+              <ValidationBadge valid={validations.encryption} label="Your data is encrypted" />
             </div>
           </CardContent>
         </Card>
 
-        {/* Cost Estimate */}
-        <div className="mb-8 p-4 bg-muted/50 border rounded-xl">
-          <div className="flex items-start gap-3">
-            <DollarSign className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-foreground">Estimated Cost</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Kubernetes control plane (~$72/month)
-                <br />
-                Compute resources (based on usage)
-              </p>
-              <p className="text-xs text-muted-foreground mt-2 border-t pt-2">
-                This is a baseline estimate. Spot instances can reduce compute costs by up to 90%.
-              </p>
-            </div>
-          </div>
-        </div>
 
-        {/* CTA */}
-        <div className="flex justify-between items-center">
-          <Button variant="outline" onClick={() => window.history.back()}>
-            Back
-          </Button>
-          <Button
-            size="lg"
-            disabled={!allValid}
-            className="gap-2 bg-emerald-600 hover:bg-emerald-700"
-            onClick={() => router.push("/compute-strategy")}
-          >
-            Continue to Compute Strategy
-            <ChevronRight className="w-4 h-4" />
-          </Button>
+        {/* Navigation */}
+        <div className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t z-50 h-16">
+          <div className="max-w-2xl mx-auto px-4 h-full flex items-center justify-between">
+            <Button 
+              variant="outline" 
+              onClick={() => router.push("/cloud-setup")}
+              className="gap-2"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Back
+            </Button>
+            <Button
+              size="lg"
+              disabled={!allValid}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 h-10 px-8"
+              onClick={() => router.push("/compute-strategy")}
+            >
+              Continue to System Power
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>

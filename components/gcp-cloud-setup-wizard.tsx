@@ -198,7 +198,11 @@ export function GCPCloudSetupWizard() {
   }, [visibleSteps, currentStep])
 
   const updateState = (updates: Partial<WizardState>) => {
-    setState((prev) => ({ ...prev, ...updates }))
+    setState((prev) => {
+      const next = { ...prev, ...updates }
+      localStorage.setItem("gcpCloudSetupState", JSON.stringify(next))
+      return next
+    })
   }
 
   const goNext = () => {

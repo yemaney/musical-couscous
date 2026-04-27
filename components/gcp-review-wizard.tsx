@@ -29,7 +29,9 @@ import { cn } from "@/lib/utils"
 export function GCPReviewWizard() {
   const router = useRouter()
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false)
+  const [showBatchCommand, setShowBatchCommand] = useState(false)
   const [isLaunching, setIsLaunching] = useState(false)
+  const [batchCommand, setBatchCommand] = useState<string[]>([])
 
   const [config, setConfig] = useState({
     clusterName: "gcp-production-cluster",
@@ -40,11 +42,74 @@ export function GCPReviewWizard() {
   })
 
   useEffect(() => {
-    const savedGCP = localStorage.getItem("gcpCloudSetupState")
-    if (savedGCP) {
-      const parsed = JSON.parse(savedGCP)
-      setConfig(prev => ({ ...prev, ...parsed }))
+    const cloudState = JSON.parse(localStorage.getItem("gcpCloudSetupState") || "{}")
+    const clusterState = JSON.parse(localStorage.getItem("gcpClusterSetupState") || "{}")
+    const computeState = JSON.parse(localStorage.getItem("gcpComputeStrategyState") || "{}")
+
+    setConfig({
+      clusterName: clusterState.clusterName || "gcp-production-cluster",
+      region: clusterState.region || "us-central1",
+      dataRetention: computeState.dataRetention || 30,
+      backupFrequency: computeState.backupSchedule || "daily",
+      maxMachines: computeState.maxNodes || 10,
+    })
+
+    // Iceberg Logic for Command
+    const isAdvanced = computeState.isAdvancedMode;
+    const isIceberg = computeState.isIcebergEnabled || false;
+    
+    let icebergFlag = isIceberg.toString();
+    let icebergBackup = (computeState.isIcebergBackupEnabled || false).toString();
+    let icebergStorage = (computeState.icebergStorageSize || 20).toString();
+    let icebergRetention = `${computeState.icebergRetention || 365}d`;
+    let icebergSchedule = "0 0 0 * * 0"; // Default weekly
+
+    if (!isAdvanced) {
+      if (isIceberg) {
+        // Simple mode enabled defaults per user request
+        icebergFlag = "true"; 
+        icebergBackup = "true";
+        icebergStorage = "1000";
+        icebergSchedule = "0 0 0 * * 0"; // Weekly
+      }
+    } else {
+      // Advanced mode: set based on user selection
+      if (computeState.icebergBackupSchedule === "hourly") icebergSchedule = "0 0 * * * *";
+      else if (computeState.icebergBackupSchedule === "daily") icebergSchedule = "0 0 0 * * *";
+      else if (computeState.icebergBackupSchedule === "weekly") icebergSchedule = "0 0 0 * * 0";
     }
+
+    const cmd = [
+      "python3", "gcp.py",
+      "--command", "apply",
+      "--spooling", "false",
+      "--fault_tolerance", "false",
+      "--tenantId", "afabc21e-6dbf-4ace-8971-b06212dcb2c9",
+      "--userId", "afabc21e-6dbf-4ace-8971-b06212dcb2c9",
+      "--projectid", clusterState.clusterName || "gcp-project",
+      "--tier", "basic",
+      "--max_nodes", (computeState.maxNodes || 10).toString(),
+      "--min_nodes", (computeState.minNodes || 2).toString(),
+      "--region", clusterState.region || "us-central1",
+      "--subdomain", "gcp-subdomain",
+      "--iceberg", icebergFlag,
+      "--icebergBackup", icebergBackup,
+      "--icebergPgStorageSize", icebergStorage,
+      "--icebergPgRetentionPolicy", icebergRetention,
+      "--icebergBackupSchedule", icebergSchedule,
+      "--network", clusterState.network || cloudState.vpcName || "default",
+      "--subnet", clusterState.subnet || cloudState.subnetName || "default",
+      "--machine_type", computeState.machineType || "n2-standard-2",
+      "--base_machine_type", computeState.baseMachineType || "n2-standard-2",
+      "--kubernetes_version", clusterState.kubernetesVersion || "1.29",
+      "--addon_enabled", (computeState.isAddonEnabled || false).toString(),
+      "--addon_cpu_limit", (computeState.addonCpu || 2).toString(),
+      "--addon_mem_limit", `${computeState.addonMemory || 8}Gi`,
+      "--use_spot", (computeState.useSpot || false).toString(),
+      "--backup_enabled", (computeState.isBackupEnabled || false).toString(),
+      "--backup_schedule", computeState.backupSchedule === "daily" ? "0 0 * * *" : "0 0 * * 0"
+    ]
+    setBatchCommand(cmd)
   }, [])
 
   const handleLaunch = () => {
@@ -150,6 +215,57 @@ export function GCPReviewWizard() {
                 </div>
               </CardContent>
             </Card>
+          </div>
+
+          {/* GCP Batch Command Expandable Card */}
+          <div className="pt-2">
+            <Button
+              variant="ghost"
+              className="w-full justify-between text-muted-foreground hover:text-blue-600 transition-colors"
+              onClick={() => setShowBatchCommand(!showBatchCommand)}
+            >
+              <div className="flex items-center gap-2">
+                <Rocket className="w-4 h-4" />
+                <span className="font-semibold text-sm">View GCP Batch submission command</span>
+              </div>
+              <ChevronDown className={cn("w-4 h-4 transition-transform duration-300", showBatchCommand && "rotate-180")} />
+            </Button>
+            
+            {showBatchCommand && (
+              <Card className="mt-4 border-2 border-blue-500/20 bg-slate-950 overflow-hidden animate-in slide-in-from-top-4 duration-300">
+                <CardHeader className="py-3 px-4 border-b border-blue-500/10 bg-slate-900/50">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-xs font-bold text-blue-500 uppercase tracking-widest flex items-center gap-2">
+                      <Cpu className="w-3.5 h-3.5" />
+                      Payload Preview
+                    </CardTitle>
+                    <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-400 border-blue-500/20">
+                      GCP Script
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="relative group">
+                    <pre className="p-4 text-[11px] font-mono leading-relaxed text-blue-400/90 whitespace-pre overflow-x-auto max-h-[400px] custom-scrollbar">
+                      {JSON.stringify(batchCommand, null, 2)}
+                    </pre>
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button 
+                        size="sm" 
+                        variant="secondary" 
+                        className="h-7 text-[10px] bg-blue-500 text-white hover:bg-blue-600 border-none"
+                        onClick={() => {
+                          navigator.clipboard.writeText(JSON.stringify(batchCommand))
+                          alert("GCP command copied!")
+                        }}
+                      >
+                        Copy JSON
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           <div className="pt-8 border-t flex flex-col items-center gap-6">

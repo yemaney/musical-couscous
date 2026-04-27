@@ -7,6 +7,14 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import {
   Cloud,
   Settings,
   Network,
@@ -24,6 +32,9 @@ import {
   DollarSign,
   UserPlus,
   KeyRound,
+  Globe,
+  Info,
+  AlertCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -36,11 +47,26 @@ import {
 type SetupMode = "recommended" | "advanced"
 type S3UserOption = "create" | "existing"
 
+const AWS_REGIONS = [
+  { value: "us-east-1", label: "US East (N. Virginia)", recommended: true },
+  { value: "us-east-2", label: "US East (Ohio)" },
+  { value: "us-west-1", label: "US West (N. California)" },
+  { value: "us-west-2", label: "US West (Oregon)" },
+  { value: "eu-west-1", label: "Europe (Ireland)" },
+  { value: "eu-central-1", label: "Europe (Frankfurt)" },
+  { value: "ap-southeast-1", label: "Asia Pacific (Singapore)" },
+  { value: "ap-northeast-1", label: "Asia Pacific (Tokyo)" },
+]
+
 interface WizardState {
   setupMode: SetupMode
-  // Network fields (Advanced only)
+  // Network fields
+  region: string
+  az1: string
+  az2: string
   vpcId: string
   subnetIds: string
+  publicSubnetIds: string
   securityGroupIds: string
   networkCidr: string
   serviceCidr: string
@@ -49,14 +75,23 @@ interface WizardState {
   s3BucketName: string
   accessKeyId: string
   secretAccessKey: string
+  createS3User: boolean
+  // Identity
+  projectId: string
+  subdomain: string
   // Progress tracking
   outputsUploaded: boolean
+  provisioningOutputs: Record<string, string>
 }
 
 const initialState: WizardState = {
   setupMode: "recommended",
+  region: "us-east-1",
+  az1: "us-east-1a",
+  az2: "us-east-1b",
   vpcId: "",
   subnetIds: "",
+  publicSubnetIds: "",
   securityGroupIds: "",
   networkCidr: "",
   serviceCidr: "",
@@ -64,7 +99,11 @@ const initialState: WizardState = {
   s3BucketName: "",
   accessKeyId: "",
   secretAccessKey: "",
+  createS3User: true,
+  projectId: "",
+  subdomain: "",
   outputsUploaded: false,
+  provisioningOutputs: {},
 }
 
 const STEPS = [
@@ -144,7 +183,7 @@ function CommandBlock({ command, onCopy }: { command: string; onCopy: () => void
 
   return (
     <div className="relative group">
-      <pre className="p-4 bg-slate-900 text-slate-100 rounded-lg text-sm overflow-x-auto font-mono">
+      <pre className="p-4 bg-slate-900 text-slate-100 rounded-lg text-sm overflow-x-auto font-mono w-full">
         {command}
       </pre>
       <Button
@@ -184,16 +223,23 @@ export function CloudSetupWizard() {
   const [isUploading, setIsUploading] = useState(false)
 
   const updateState = useCallback((updates: Partial<WizardState>) => {
-    setState((prev) => ({ ...prev, ...updates }))
+    setState((prev) => {
+      const newState = { ...prev, ...updates }
+
+      // Auto-update AZs when region changes if they are still at defaults
+      if (updates.region && (!updates.az1 || !updates.az2)) {
+        newState.az1 = `${updates.region}a`
+        newState.az2 = `${updates.region}b`
+      }
+
+      localStorage.setItem("cloudSetupState", JSON.stringify(newState))
+      return newState
+    })
   }, [])
 
   const getVisibleSteps = useCallback(() => {
-    if (state.setupMode === "recommended") {
-      // In recommended mode, skip Network step (user still sees Storage)
-      return STEPS.filter((step) => step.id !== 2)
-    }
     return STEPS
-  }, [state.setupMode])
+  }, [])
 
   const visibleSteps = getVisibleSteps()
 
@@ -205,6 +251,9 @@ export function CloudSetupWizard() {
     const currentIndex = getCurrentStepIndex()
     if (currentIndex < visibleSteps.length - 1) {
       setCurrentStep(visibleSteps[currentIndex + 1].id)
+    } else {
+      // Last step of the flow, go to success screen
+      setCurrentStep(9)
     }
   }
 
@@ -216,41 +265,111 @@ export function CloudSetupWizard() {
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
+    const file = e.target.files?.[0]
+    if (file) {
       setIsUploading(true)
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-      updateState({ outputsUploaded: true })
-      setIsUploading(false)
+
+      const reader = new FileReader()
+      reader.onload = async (event) => {
+        try {
+          const content = event.target?.result as string
+          const json = JSON.parse(content)
+
+          const outputs: Record<string, string> = {}
+          const updates: Partial<WizardState> = { outputsUploaded: true }
+
+          // Auto-map key fields for convenience
+          if (json.ProjectId) updates.projectId = json.ProjectId
+          if (json.Subdomain) updates.subdomain = json.Subdomain
+
+          if (Array.isArray(json)) {
+            json.forEach((item: any) => {
+              if (item.OutputKey && item.OutputValue) {
+                outputs[item.OutputKey] = item.OutputValue
+
+                // Auto-map key fields from CF Outputs
+                if (item.OutputKey === "VpcId") updates.vpcId = item.OutputValue
+                if (item.OutputKey === "ProjectId") updates.projectId = item.OutputValue
+                if (item.OutputKey === "Subdomain") updates.subdomain = item.OutputValue
+                if (item.OutputKey === "VpcCidrBlock") updates.networkCidr = item.OutputValue
+                if (item.OutputKey === "NodeSecurityGroupId") updates.securityGroupIds = item.OutputValue
+                if (item.OutputKey === "PrivateSubnetIds") {
+                  try {
+                    // Parse if it's a stringified JSON array
+                    const subnets = JSON.parse(item.OutputValue)
+                    if (Array.isArray(subnets)) {
+                      updates.subnetIds = subnets.join(", ")
+                    } else {
+                      updates.subnetIds = item.OutputValue
+                    }
+                  } catch (e) {
+                    updates.subnetIds = item.OutputValue
+                  }
+                }
+              }
+            })
+          }
+
+          // If we are in advanced mode (existing network),
+          // ensure the network details from the UI are included in the outputs
+          // if they weren't provided by the CloudFormation stack.
+          if (state.setupMode === "advanced") {
+            if (!outputs.VpcId) outputs.VpcId = state.vpcId
+            if (!outputs.VpcCidrBlock) outputs.VpcCidrBlock = state.networkCidr
+            if (!outputs.PrivateSubnetIds) outputs.PrivateSubnetIds = JSON.stringify((state.subnetIds || "").split(",").map(s => s.trim()))
+            if (!outputs.PublicSubnetIds) outputs.PublicSubnetIds = JSON.stringify((state.publicSubnetIds || "").split(",").map(s => s.trim()))
+          }
+
+          updates.provisioningOutputs = outputs
+
+          // Simulate Lambda Verification (k8token)
+          // In a real app, this would be an API call to invoke the lambda
+          console.log("Invoking k8token lambda with outputs...", outputs)
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+
+          // Success! Update state
+          updateState(updates)
+        } catch (err) {
+          console.error("Failed to parse outputs file:", err)
+          alert("Invalid JSON file format. Please upload a valid CloudFormation outputs file.")
+        } finally {
+          setIsUploading(false)
+        }
+      }
+      reader.readAsText(file)
     }
   }
 
   const generateCommand = () => {
     const params: string[] = []
-    
+
     // Network parameters
     if (state.setupMode === "recommended") {
       params.push("CreateNetwork=true")
     } else {
       params.push("CreateNetwork=false")
-      params.push(`VpcId=${state.vpcId || "<vpc-id>"}`)
-      params.push(`SubnetIds=${state.subnetIds || "<subnet-ids>"}`)
-      params.push(`SecurityGroupIds=${state.securityGroupIds || "<sg-ids>"}`)
-      params.push(`NetworkCidr=${state.networkCidr || "<network-cidr>"}`)
-      params.push(`ServiceCidr=${state.serviceCidr || "<service-cidr>"}`)
+      params.push(`ExistingVpcId=${state.vpcId || "<vpc-id>"}`)
     }
-    
+
+    // Common Network Parameters
+    params.push(`AvailabilityZone1=${state.az1 || (state.region + "a")}`)
+    params.push(`AvailabilityZone2=${state.az2 || (state.region + "b")}`)
+
     // Storage parameters
-    params.push(`S3BucketName=${state.s3BucketName || "<bucket-name>"}`)
-    
+    if (state.createS3User) {
+      params.push(`S3BucketName=${state.s3BucketName || "<bucket-name>"}`)
+    }
+
     return `aws cloudformation deploy \\
-  --template-file template.yaml \\
+  --template-file aws-setup.yaml \\
   --stack-name cloud-setup-stack \\
-  --capabilities CAPABILITY_IAM \\
+  --region ${state.region || "us-east-1"} \\
+  --capabilities CAPABILITY_NAMED_IAM \\
   --parameter-overrides \\
     ${params.join(" \\\n    ")}`
   }
 
-  const createAccessKeyCommand = `aws iam create-access-key --user-name s3-backup-user`
+  const createAccessKeyCommand = `aws iam create-access-key --user-name cerebrixos-backup-user-${state.projectId || "<project-id>"}`
 
   const getOutputsCommand = `aws cloudformation describe-stacks \\
   --stack-name cloud-setup-stack \\
@@ -278,15 +397,15 @@ export function CloudSetupWizard() {
                 onClick={() => updateState({ setupMode: "recommended" })}
                 recommended
                 icon={CheckCircle2}
-                title="Recommended"
-                description="Fully automated setup. No additional inputs required."
+                title="Simple"
+                description="Automatically create a new private network for you."
               />
               <OptionCard
                 selected={state.setupMode === "advanced"}
                 onClick={() => updateState({ setupMode: "advanced" })}
                 icon={Settings}
                 title="Advanced"
-                description="Provide custom infrastructure details."
+                description="Use your own existing private network."
               />
             </div>
           </div>
@@ -294,190 +413,232 @@ export function CloudSetupWizard() {
 
       case 2:
         return (
-          <div className="space-y-8">
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="text-center">
-              <h2 className="text-2xl font-bold text-foreground">
-                Network Configuration
-              </h2>
-              <p className="mt-2 text-muted-foreground">
-                Provide your existing infrastructure details
-              </p>
+              <div className="inline-flex p-3 rounded-2xl bg-blue-100 text-blue-600 mb-4">
+                <Network className="w-6 h-6" />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900">Network Configuration</h2>
+              <p className="mt-2 text-muted-foreground">Select your deployment region and network parameters</p>
             </div>
 
-            <div className="space-y-4 max-w-md mx-auto">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="vpcId">Network ID (VPC ID) *</Label>
-                  <HelperTooltip text="Your VPC ID, usually starts with 'vpc-'" />
+            <div className="grid gap-8 max-w-2xl mx-auto">
+              <div className="space-y-6">
+                {/* Common Fields: Region & Zones */}
+                <div className="grid sm:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">AWS Region</Label>
+                    <Select
+                      value={state.region}
+                      onValueChange={(value) => updateState({ region: value })}
+                    >
+                      <SelectTrigger className="h-12 rounded-xl">
+                        <SelectValue placeholder="Region" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AWS_REGIONS.map((region) => (
+                          <SelectItem key={region.value} value={region.value}>
+                            {region.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Zone 1</Label>
+                    <Input
+                      value={state.az1}
+                      onChange={(e) => updateState({ az1: e.target.value })}
+                      placeholder={`${state.region}a`}
+                      className="h-12 rounded-xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Zone 2</Label>
+                    <Input
+                      value={state.az2}
+                      onChange={(e) => updateState({ az2: e.target.value })}
+                      placeholder={`${state.region}b`}
+                      className="h-12 rounded-xl"
+                    />
+                  </div>
                 </div>
-                <Input
-                  id="vpcId"
-                  placeholder="vpc-xxxxxxxxx"
-                  value={state.vpcId}
-                  onChange={(e) => updateState({ vpcId: e.target.value })}
-                  required
-                />
-              </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="subnetIds">Subnet IDs *</Label>
-                  <HelperTooltip text="Comma-separated list of subnet IDs" />
-                </div>
-                <Input
-                  id="subnetIds"
-                  placeholder="subnet-xxx, subnet-yyy"
-                  value={state.subnetIds}
-                  onChange={(e) => updateState({ subnetIds: e.target.value })}
-                  required
-                />
-              </div>
+                {state.setupMode === "advanced" && (
+                  <div className="pt-8 border-t space-y-6 animate-in slide-in-from-top-4 duration-500">
+                    <div className="grid sm:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">VPC ID</Label>
+                        <Input
+                          placeholder="vpc-xxxxxxxxx"
+                          value={state.vpcId}
+                          onChange={(e) => updateState({ vpcId: e.target.value })}
+                          className="h-12 rounded-xl"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Network CIDR</Label>
+                        <Input
+                          placeholder="10.0.0.0/16"
+                          value={state.networkCidr}
+                          onChange={(e) => updateState({ networkCidr: e.target.value })}
+                          className="h-12 rounded-xl"
+                        />
+                      </div>
+                    </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="securityGroupIds">Security Group IDs *</Label>
-                  <HelperTooltip text="Comma-separated list of security group IDs" />
-                </div>
-                <Input
-                  id="securityGroupIds"
-                  placeholder="sg-xxx, sg-yyy"
-                  value={state.securityGroupIds}
-                  onChange={(e) => updateState({ securityGroupIds: e.target.value })}
-                  required
-                />
-              </div>
+                    <div className="grid sm:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Private Subnet IDs</Label>
+                        <Input
+                          placeholder="subnet-xxx, subnet-yyy"
+                          value={state.subnetIds}
+                          onChange={(e) => updateState({ subnetIds: e.target.value })}
+                          className="h-12 rounded-xl"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Public Subnet IDs</Label>
+                        <Input
+                          placeholder="subnet-aaa, subnet-bbb"
+                          value={state.publicSubnetIds}
+                          onChange={(e) => updateState({ publicSubnetIds: e.target.value })}
+                          className="h-12 rounded-xl"
+                        />
+                      </div>
+                    </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="networkCidr">Network CIDR Range *</Label>
-                  <HelperTooltip text="The CIDR block for your VPC (e.g., 10.0.0.0/16)" />
-                </div>
-                <Input
-                  id="networkCidr"
-                  placeholder="10.0.0.0/16"
-                  value={state.networkCidr}
-                  onChange={(e) => updateState({ networkCidr: e.target.value })}
-                  required
-                />
+                    <div className="grid sm:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Security Group ID</Label>
+                        <Input
+                          placeholder="sg-xxxxxxxxx"
+                          value={state.securityGroupIds}
+                          onChange={(e) => updateState({ securityGroupIds: e.target.value })}
+                          className="h-12 rounded-xl"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">EKS Service CIDR</Label>
+                        <Input
+                          placeholder="172.20.0.0/16"
+                          value={state.serviceCidr}
+                          onChange={(e) => updateState({ serviceCidr: e.target.value })}
+                          className="h-12 rounded-xl"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="serviceCidr">EKS Service CIDR Range *</Label>
-                  <HelperTooltip text="The CIDR block for Kubernetes services (e.g., 172.20.0.0/16)" />
-                </div>
-                <Input
-                  id="serviceCidr"
-                  placeholder="172.20.0.0/16"
-                  value={state.serviceCidr}
-                  onChange={(e) => updateState({ serviceCidr: e.target.value })}
-                  required
-                />
-              </div>
-
-              <p className="text-xs text-muted-foreground pt-2">
-                * All fields are required
-              </p>
             </div>
           </div>
         )
 
       case 3:
         return (
-          <div className="space-y-8">
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="text-center">
-              <h2 className="text-2xl font-bold text-foreground">
-                Storage Setup (S3)
-              </h2>
-              <p className="mt-2 text-muted-foreground">
-                Configure your S3 bucket and access credentials
-              </p>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center max-w-2xl mx-auto">
-              <OptionCard
-                selected={state.s3UserOption === "create"}
-                onClick={() => updateState({ s3UserOption: "create" })}
-                recommended
-                icon={UserPlus}
-                title="Create New S3 User"
-                description="We'll guide you through creating a new IAM user."
-              />
-              <OptionCard
-                selected={state.s3UserOption === "existing"}
-                onClick={() => updateState({ s3UserOption: "existing" })}
-                icon={KeyRound}
-                title="Use Existing Credentials"
-                description="I already have access keys for this bucket."
-              />
-            </div>
-
-            <div className="space-y-6 max-w-lg mx-auto">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="s3BucketName">S3 Bucket Name *</Label>
-                  <HelperTooltip text="The name of your S3 bucket for backups" />
-                </div>
-                <Input
-                  id="s3BucketName"
-                  placeholder="my-bucket-name"
-                  value={state.s3BucketName}
-                  onChange={(e) => updateState({ s3BucketName: e.target.value })}
-                  required
-                />
+              <div className="inline-flex p-3 rounded-2xl bg-amber-100 text-amber-600 mb-4">
+                <Database className="w-6 h-6" />
               </div>
+              <h2 className="text-2xl font-bold text-slate-900">Storage Configuration</h2>
+              <p className="mt-2 text-muted-foreground">Configure your S3 bucket and access credentials</p>
+            </div>
 
-              {state.s3UserOption === "create" && (
-                <div className="border-t pt-6 animate-in slide-in-from-top-4 duration-300">
-                  <h3 className="font-semibold text-foreground mb-3">Create Access Credentials</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Run this command to create an IAM user and generate access keys:
-                  </p>
-                  <CommandBlock command={createAccessKeyCommand} onCopy={() => {}} />
-                </div>
-              )}
-
-              <div className="border-t pt-6 space-y-4">
-                <h3 className="font-semibold text-foreground">Enter Your Credentials</h3>
-                <p className="text-sm text-muted-foreground">
-                  {state.s3UserOption === "create"
-                    ? "Copy the Access Key ID and Secret Access Key from the command output:"
-                    : "Enter your existing access credentials:"}
-                </p>
-                
+            <div className="space-y-8 max-w-xl mx-auto">
+              <div className="space-y-6">
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="accessKeyId">Access Key ID *</Label>
-                    <HelperTooltip text="The AccessKeyId for your S3 user" />
-                  </div>
+                  <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">S3 Bucket Name</Label>
                   <Input
-                    id="accessKeyId"
-                    placeholder="AKIAIOSFODNN7EXAMPLE"
-                    value={state.accessKeyId}
-                    onChange={(e) => updateState({ accessKeyId: e.target.value })}
-                    required
+                    placeholder="my-infrastructure-backups"
+                    value={state.s3BucketName}
+                    onChange={(e) => updateState({ s3BucketName: e.target.value })}
+                    className="h-12 rounded-xl"
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="secretAccessKey">Secret Access Key *</Label>
-                    <HelperTooltip text="The SecretAccessKey for your S3 user" />
-                  </div>
-                  <Input
-                    id="secretAccessKey"
-                    type="password"
-                    placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-                    value={state.secretAccessKey}
-                    onChange={(e) => updateState({ secretAccessKey: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
+                {state.setupMode === "advanced" && (
+                  <>
+                    <div className="flex items-center justify-between p-4 rounded-xl border bg-muted/30">
+                      <div className="space-y-0.5">
+                        <Label className="text-sm font-semibold">Create S3 User</Label>
+                        <p className="text-xs text-muted-foreground">Automatically create an IAM user for backups and data lake access.</p>
+                      </div>
+                      <Switch
+                        checked={state.createS3User}
+                        onCheckedChange={(checked) => updateState({ createS3User: checked })}
+                      />
+                    </div>
 
-              <p className="text-xs text-muted-foreground">
-                * All fields are required
-              </p>
+                    {!state.createS3User && (
+                      <div className="space-y-6 pt-4 animate-in slide-in-from-top-4 duration-300">
+                        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 space-y-3">
+                          <div className="flex gap-3">
+                            <Shield className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                            <div className="space-y-1">
+                              <p className="text-sm font-semibold text-amber-900">Permission Requirement</p>
+                              <p className="text-xs text-amber-800 leading-relaxed">
+                                Ensure your IAM user has the following policy attached to access the bucket <span className="font-mono font-bold">"{state.s3BucketName || "selected bucket"}"</span>:
+                              </p>
+                            </div>
+                          </div>
+
+                          <pre className="p-3 bg-white/50 border border-amber-200 rounded-lg text-[10px] font-mono text-amber-900 overflow-x-auto leading-tight">
+                            {`{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["pricing:GetProducts"],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject", "s3:DeleteObject", "s3:PutObject",
+        "s3:PutObjectTagging", "s3:AbortMultipartUpload",
+        "s3:ListMultipartUploadParts"
+      ],
+      "Resource": "arn:aws:s3:::${state.s3BucketName || "<bucket-name>"}/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::${state.s3BucketName || "<bucket-name>"}"
+    }
+  ]
+}`}
+                          </pre>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Access Key ID</Label>
+                            <Input
+                              placeholder="AKIA..."
+                              value={state.accessKeyId}
+                              onChange={(e) => updateState({ accessKeyId: e.target.value })}
+                              className="h-12 rounded-xl font-mono text-sm"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Secret Access Key</Label>
+                            <Input
+                              type="password"
+                              placeholder="••••••••••••••••"
+                              value={state.secretAccessKey}
+                              onChange={(e) => updateState({ secretAccessKey: e.target.value })}
+                              className="h-12 rounded-xl"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+              </div>
             </div>
           </div>
         )
@@ -493,40 +654,8 @@ export function CloudSetupWizard() {
               <p className="mt-2 text-muted-foreground">Follow these steps to complete your setup</p>
             </div>
 
-            <Card className="max-w-lg mx-auto">
-              <CardContent className="p-6 space-y-4">
-                <h3 className="font-semibold text-foreground">Your Selections</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Network className="w-5 h-5 text-emerald-500 shrink-0" />
-                    <span className="text-sm">
-                      {state.setupMode === "recommended"
-                        ? "Network will be automatically created"
-                        : `Using existing VPC: ${state.vpcId || "Not specified"}`}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Database className="w-5 h-5 text-emerald-500 shrink-0" />
-                    <span className="text-sm">
-                      S3 bucket &quot;{state.s3BucketName || "Not specified"}&quot; with credentials configured
-                    </span>
-                  </div>
-                </div>
 
-                <div className="pt-4 border-t space-y-2">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Shield className="w-4 h-4" />
-                    <span>This is safe and only creates required resources</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <DollarSign className="w-4 h-4" />
-                    <span>Estimated monthly cost: $50-$150</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="max-w-2xl mx-auto space-y-8">
+            <div className="max-w-3xl mx-auto space-y-8">
               <h3 className="font-semibold text-foreground text-lg">Follow these steps</h3>
 
               <div className="space-y-6">
@@ -557,7 +686,7 @@ export function CloudSetupWizard() {
                     <p className="text-sm text-muted-foreground">
                       Open your terminal, navigate to the folder where you saved the file, and run this command:
                     </p>
-                    <CommandBlock command={generateCommand()} onCopy={() => {}} />
+                    <CommandBlock command={generateCommand()} onCopy={() => { }} />
                     <p className="text-xs text-muted-foreground">
                       This may take a few minutes to complete. Wait until you see a success message.
                     </p>
@@ -574,7 +703,7 @@ export function CloudSetupWizard() {
                     <p className="text-sm text-muted-foreground">
                       After the setup finishes, run this command to save the results to a file called <code className="px-1.5 py-0.5 bg-muted rounded text-foreground font-mono text-xs">outputs.json</code>:
                     </p>
-                    <CommandBlock command={getOutputsCommand} onCopy={() => {}} />
+                    <CommandBlock command={getOutputsCommand} onCopy={() => { }} />
                   </div>
                 </div>
 
@@ -584,9 +713,12 @@ export function CloudSetupWizard() {
                     4
                   </div>
                   <div className="flex-1 space-y-3">
-                    <p className="text-sm font-medium">Upload the results file</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">Upload the results file</p>
+                      <HelperTooltip text="File must be a JSON array of objects with 'OutputKey' and 'OutputValue' fields. Example: [ { 'OutputKey': 'VpcId', 'OutputValue': 'vpc-...' }, ... ]" />
+                    </div>
                     <p className="text-sm text-muted-foreground">
-                      Upload the <code className="px-1.5 py-0.5 bg-muted rounded text-foreground font-mono text-xs">outputs.json</code> file you just created:
+                      Upload the <code className="px-1.5 py-0.5 bg-muted rounded text-foreground font-mono text-xs">outputs.json</code> file:
                     </p>
                     <label
                       htmlFor="file-upload"
@@ -603,7 +735,7 @@ export function CloudSetupWizard() {
                         <div className="text-center">
                           <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
                           <p className="text-sm font-medium text-emerald-600">
-                            File uploaded successfully
+                            Environment Verified Successfully
                           </p>
                         </div>
                       ) : (
@@ -629,6 +761,47 @@ export function CloudSetupWizard() {
                     </label>
                   </div>
                 </div>
+
+                {/* Step 5: S3 Credentials */}
+                {state.createS3User && (
+                  <div className="flex items-start gap-4">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 font-semibold text-sm shrink-0">
+                      5
+                    </div>
+                    <div className="flex-1 space-y-4 min-w-0">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">Create S3 Access Keys</p>
+                        <p className="text-sm text-muted-foreground">
+                          Run this command to generate programmatic access keys for the backup user:
+                        </p>
+                      </div>
+
+                      <CommandBlock command={createAccessKeyCommand} onCopy={() => { }} />
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 w-full">
+                        <div className="space-y-2">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Access Key ID</Label>
+                          <Input
+                            placeholder="AKIA..."
+                            value={state.accessKeyId}
+                            onChange={(e) => updateState({ accessKeyId: e.target.value })}
+                            className="h-10 rounded-lg font-mono text-xs"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Secret Access Key</Label>
+                          <Input
+                            type="password"
+                            placeholder="••••••••••••••••"
+                            value={state.secretAccessKey}
+                            onChange={(e) => updateState({ secretAccessKey: e.target.value })}
+                            className="h-10 rounded-lg"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -669,8 +842,8 @@ export function CloudSetupWizard() {
               </CardContent>
             </Card>
 
-            <Button 
-              size="lg" 
+            <Button
+              size="lg"
               className="gap-2 bg-emerald-600 hover:bg-emerald-700"
               onClick={() => {
                 localStorage.setItem("cloudSetupState", JSON.stringify(state))
@@ -691,24 +864,33 @@ export function CloudSetupWizard() {
   const canGoNext = () => {
     switch (currentStep) {
       case 2:
-        // Network step (Advanced only) - all fields required
+        // Network step - only require full details in advanced mode
+        if (state.setupMode === "recommended") {
+          return state.region !== ""
+        }
         return (
+          state.region !== "" &&
           state.vpcId.trim() !== "" &&
           state.subnetIds.trim() !== "" &&
+          state.publicSubnetIds.trim() !== "" &&
           state.securityGroupIds.trim() !== "" &&
           state.networkCidr.trim() !== "" &&
           state.serviceCidr.trim() !== ""
         )
       case 3:
-        // Storage step - bucket name and credentials required
+        // Storage step - bucket name required, and if not creating user, keys are required
+        const bucketOk = state.s3BucketName.trim() !== ""
+        if (!state.createS3User) {
+          return bucketOk && state.accessKeyId.trim() !== "" && state.secretAccessKey.trim() !== ""
+        }
+        return bucketOk
+      case 5:
+        // Review step - outputs uploaded AND s3 credentials provided
         return (
-          state.s3BucketName.trim() !== "" &&
+          state.outputsUploaded &&
           state.accessKeyId.trim() !== "" &&
           state.secretAccessKey.trim() !== ""
         )
-      case 5:
-        // Review step - file must be uploaded
-        return state.outputsUploaded
       default:
         return true
     }
@@ -753,8 +935,8 @@ export function CloudSetupWizard() {
                     isActive
                       ? "text-emerald-600"
                       : isComplete
-                      ? "text-foreground hover:text-emerald-600 cursor-pointer"
-                      : "text-muted-foreground/50 cursor-not-allowed"
+                        ? "text-foreground hover:text-emerald-600 cursor-pointer"
+                        : "text-muted-foreground/50 cursor-not-allowed"
                   )}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -767,7 +949,7 @@ export function CloudSetupWizard() {
       </div>
 
       {/* Content */}
-      <main className="max-w-4xl mx-auto px-4 py-12">
+      <main className="max-w-4xl mx-auto px-4 pt-12 pb-32">
         <div className="animate-in fade-in-0 slide-in-from-bottom-4 duration-500">
           {renderStepContent()}
         </div>

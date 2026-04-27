@@ -184,7 +184,11 @@ export function GCPClusterSetupWizard() {
   }, [state.clusterName])
 
   const updateState = (updates: Partial<ClusterState>) => {
-    setState((prev) => ({ ...prev, ...updates }))
+    setState((prev) => {
+      const next = { ...prev, ...updates }
+      localStorage.setItem("gcpClusterSetupState", JSON.stringify(next))
+      return next
+    })
   }
 
   const isRecommendedMode = previousSetupMode === "recommended"

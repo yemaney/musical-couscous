@@ -18,10 +18,7 @@ import {
   Database,
   Lock,
   Globe,
-  HardDrive,
-  Cpu,
   Activity,
-  AlertCircle,
   BarChart3,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -30,9 +27,11 @@ export function ReviewWizard() {
   const router = useRouter()
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false)
   const [isLaunching, setIsLaunching] = useState(false)
+  const [computeState, setComputeState] = useState<any>({})
+  const [clusterState, setClusterState] = useState<any>({})
+  const [cloudState, setCloudState] = useState<any>({})
 
   // In a real app, we'd pull this from a global state or localStorage
-  // For this wizard demo, we'll use some sensible defaults if nothing is found
   const [config, setConfig] = useState({
     clusterName: "production-cluster",
     region: "us-east-1",
@@ -45,11 +44,25 @@ export function ReviewWizard() {
   })
 
   useEffect(() => {
-    const savedAWS = localStorage.getItem("awsConfig")
-    if (savedAWS) {
-      const parsed = JSON.parse(savedAWS)
-      setConfig(prev => ({ ...prev, ...parsed }))
-    }
+    const cloudStateData = JSON.parse(localStorage.getItem("cloudSetupState") || "{}")
+    const clusterStateData = JSON.parse(localStorage.getItem("clusterSetupState") || "{}")
+    const computeStateData = JSON.parse(localStorage.getItem("computeStrategyState") || "{}")
+
+    setCloudState(cloudStateData)
+    setClusterState(clusterStateData)
+    setComputeState(computeStateData)
+
+    // Update basic config for the UI
+    setConfig({
+      clusterName: clusterStateData.clusterName || "production-cluster",
+      region: cloudStateData.region || "us-east-1",
+      dataRetention: computeStateData.dataRetention || 30,
+      backupFrequency: computeStateData.backupFrequency || "daily",
+      minMachines: computeStateData.baseMinMachines || 1,
+      maxMachines: computeStateData.baseMaxMachines || 10,
+      cpuPerMachine: computeStateData.baseCpu || 4,
+      memoryPerMachine: computeStateData.baseMemory || 16,
+    })
   }, [])
 
   const handleLaunch = () => {
@@ -61,8 +74,32 @@ export function ReviewWizard() {
     }, 2000)
   }
 
+  const specs = (function() {
+    const getBaseResources = (type: string) => {
+      if (type?.includes("xlarge")) return { cpu: 4, mem: 16 }
+      if (type?.includes("large")) return { cpu: 2, mem: 8 }
+      return { cpu: 2, mem: 4 } // medium
+    }
+    
+    const baseRes = getBaseResources(computeState.baseInstanceType)
+    const baseMin = computeState.baseMinMachines || 0
+    const baseMax = computeState.baseMaxMachines || 0
+    const dataMin = computeState.dataMinMachines || 0
+    const dataMax = computeState.dataMaxMachines || 0
+    const dataCpu = computeState.dataCpu || 0
+    const isAddon = computeState.isAddonEnabled || false
+    const addonCpu = computeState.addonCpu || 0
+
+    return {
+      base: { min: baseMin, max: baseMax, cpu: baseRes.cpu, memory: baseRes.mem },
+      data: { min: dataMin, max: dataMax, cpu: dataCpu, memory: computeState.dataMemory || 0 },
+      totalMin: (baseMin * baseRes.cpu) + (dataMin * dataCpu) + (isAddon ? addonCpu : 0),
+      totalMax: (baseMax * baseRes.cpu) + (dataMax * dataCpu) + (isAddon ? addonCpu : 0)
+    }
+  })()
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-40">
       <div className="max-w-3xl mx-auto px-4 py-12">
         {/* Header */}
         <div className="text-center mb-10 space-y-4">
@@ -106,116 +143,113 @@ export function ReviewWizard() {
             </div>
           </section>
 
-          {/* System Size Summary */}
-          <Card className="bg-gradient-to-br from-muted/50 to-background border-2">
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-emerald-600" />
-                  Your System Size
-                </CardTitle>
-                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
-                  Optimized
+          {/* Combined Summary Card */}
+          <Card className="border-2 border-emerald-500/20 shadow-xl overflow-hidden bg-white">
+            <CardHeader className="bg-emerald-50/50 border-b border-emerald-500/10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg font-bold flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-emerald-600" />
+                    Combined Summary
+                  </CardTitle>
+                  <CardDescription>Your integrated system and data strategy</CardDescription>
+                </div>
+                <Badge className="bg-emerald-600 text-white border-none px-3 py-1">
+                  Ready to Deploy
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
-                <div className="space-y-1">
-                  <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Baseline</span>
-                  <div className="text-xl font-bold">1–2 machines</div>
-                  <span className="text-[10px] text-muted-foreground uppercase font-medium">Always running</span>
+            <CardContent className="p-0">
+              <div className="grid md:grid-cols-2 gap-0">
+                <div className="p-6 space-y-6">
+                  <div className="grid gap-6">
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">1. Core System Servers</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold">
+                          {specs.base.min === specs.base.max 
+                            ? `${specs.base.min} server` 
+                            : `${specs.base.min} – ${specs.base.max} servers`}
+                        </span>
+                        <span className="text-xs text-muted-foreground">({specs.base.cpu} CPU/server)</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-emerald-500/5">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">2. Processing Servers</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold">
+                          {specs.data.min === specs.data.max 
+                            ? `${specs.data.min} server` 
+                            : `${specs.data.min} – ${specs.data.max} servers`}
+                        </span>
+                        <span className="text-xs text-muted-foreground">({specs.data.cpu} CPU/server)</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-emerald-500/5">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">3. System Addons</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold">{computeState.isAddonEnabled ? "Enabled" : "Disabled"}</span>
+                        {computeState.isAddonEnabled && (
+                          <span className="text-xs text-muted-foreground">{computeState.addonCpu} CPU / {computeState.addonMemory}GB</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-emerald-500/5">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">4. Automated Backups</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold">{computeState.isBackupEnabled ? "Enabled" : "Disabled"}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-emerald-500/5">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">5. Spot Optimization</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold">{computeState.useSpot ? "Enabled" : "Disabled"}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-emerald-500/5">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">6. Data Platform</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold">{computeState.isIcebergEnabled ? "Enabled" : "Disabled"}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Maximum</span>
-                  <div className="text-xl font-bold">Up to {config.maxMachines} machines</div>
-                  <span className="text-[10px] text-muted-foreground uppercase font-medium">Auto-scales up</span>
-                </div>
-                <div className="space-y-1 col-span-2 sm:col-span-1">
-                  <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Capacity</span>
-                  <div className="text-xl font-bold text-emerald-600">6 → 48 CPU</div>
-                  <span className="text-[10px] text-muted-foreground uppercase font-medium">Dynamic range</span>
+
+                <div className="p-6 bg-slate-50 flex flex-col justify-between border-l">
+                  <div className="space-y-6">
+                    <div className="p-6 bg-emerald-600 rounded-2xl text-white shadow-lg shadow-emerald-600/20">
+                      <span className="text-[10px] uppercase font-bold tracking-widest mb-1 block opacity-80">Total Processing Capacity</span>
+                      <div className="text-3xl font-black">
+                        {specs.totalMin} → {specs.totalMax} CPU
+                      </div>
+                      <p className="text-xs opacity-70 mt-1">Simultaneous tasks your system can handle</p>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Deployment Region</h4>
+                      <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-emerald-500/10">
+                        <Globe className="w-5 h-5 text-emerald-600" />
+                        <div>
+                          <span className="text-sm font-bold block leading-none">{cloudState.region || "us-east-1"}</span>
+                          <span className="text-[10px] text-muted-foreground uppercase font-medium tracking-tight">AWS Managed Cloud</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <p className="text-[10px] text-muted-foreground flex items-start gap-2 pt-6 border-t border-dashed leading-relaxed mt-6">
+                    <Info className="w-3 h-3 text-emerald-500 shrink-0 mt-0.5" />
+                    Servers automatically scale based on how busy your system is.
+                  </p>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground flex items-center gap-2 pt-4 border-t border-dashed">
-                <Info className="w-3.5 h-3.5" />
-                Your system automatically scales based on workload to maintain performance.
-              </p>
             </CardContent>
           </Card>
-
-          {/* Data & Protection */}
-          <div className="grid sm:grid-cols-2 gap-6">
-            <Card>
-              <CardContent className="pt-6 space-y-4">
-                <h4 className="font-bold flex items-center gap-2 text-sm">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  Data & Protection
-                </h4>
-                <ul className="space-y-2">
-                  <li className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Backups</span>
-                    <span className="font-semibold text-emerald-600">Enabled ({config.backupFrequency})</span>
-                  </li>
-                  <li className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Retention</span>
-                    <span className="font-semibold">{config.dataRetention} days</span>
-                  </li>
-                  <li className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Encryption</span>
-                    <span className="font-semibold">AES-256 (Always-on)</span>
-                  </li>
-                </ul>
-              </CardContent>
-            </Card>
-
-            <Card className="border-emerald-500/20 bg-emerald-50/10">
-              <CardContent className="pt-6 space-y-4">
-                <h4 className="font-bold flex items-center gap-2 text-sm">
-                  <DollarSign className="w-4 h-4 text-emerald-600" />
-                  Estimated Cost
-                </h4>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Base system cost</span>
-                    <span className="font-semibold">~$80/mo</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Usage-based scale</span>
-                    <span className="font-semibold">$50 – $300/mo</span>
-                  </div>
-                  <div className="pt-2 border-t flex items-baseline justify-between">
-                    <span className="text-sm font-bold">Total Est.</span>
-                    <span className="text-lg font-bold text-emerald-700">$130 – $380/mo</span>
-                  </div>
-                </div>
-                <p className="text-[10px] text-muted-foreground leading-tight italic">
-                  * Costs scale with usage. You only pay for what you actually use.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Pre-Launch Checks */}
-          <section className="p-4 bg-muted/20 rounded-2xl border space-y-3">
-             <h4 className="text-sm font-bold flex items-center gap-2">
-               <Activity className="w-4 h-4" />
-               Pre-Launch Checks
-             </h4>
-             <div className="flex flex-wrap gap-4">
-               {[
-                 { label: "Cloud setup verified", status: "ok" },
-                 { label: "Permissions ready", status: "ok" },
-                 { label: "Storage connected", status: "ok" },
-                 { label: "Capacity validated", status: "ok" },
-               ].map((check, i) => (
-                 <div key={i} className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
-                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                   {check.label}
-                 </div>
-               ))}
-             </div>
-          </section>
 
           {/* Technical Details Collapsed */}
           <div>
@@ -227,55 +261,55 @@ export function ReviewWizard() {
               <span>View technical inventory</span>
               <ChevronDown className={cn("w-4 h-4 transition-transform", showTechnicalDetails && "rotate-180")} />
             </Button>
-            
+
             {showTechnicalDetails && (
               <div className="mt-4 p-6 rounded-2xl bg-muted/30 border-2 border-dashed space-y-6 animate-in slide-in-from-top-4 duration-300">
                 <div className="grid sm:grid-cols-2 gap-8 text-xs">
-                   <div className="space-y-4">
-                      <div>
-                        <span className="font-bold block mb-1 uppercase tracking-wider opacity-50">EKS Cluster</span>
-                        <p>Version: 1.29</p>
-                        <p>Name: {config.clusterName}</p>
-                        <p>Control Plane: Managed AWS</p>
-                      </div>
-                      <div>
-                        <span className="font-bold block mb-1 uppercase tracking-wider opacity-50">Identity & Access</span>
-                        <p>Orchestrator: arn:aws:iam::.../OrchestratorRole</p>
-                        <p>Node Groups: arn:aws:iam::.../NodeGroupRole</p>
-                      </div>
-                   </div>
-                   <div className="space-y-4">
-                      <div>
-                        <span className="font-bold block mb-1 uppercase tracking-wider opacity-50">Networking</span>
-                        <p>VPC: 10.0.0.0/16</p>
-                        <p>Subnets: 3x Private, 3x Public</p>
-                        <p>Gateway: NAT Gateway (Managed)</p>
-                      </div>
-                      <div>
-                        <span className="font-bold block mb-1 uppercase tracking-wider opacity-50">Storage & Encryption</span>
-                        <p>Buckets: production-data-assets</p>
-                        <p>KMS: AWS Managed Key (Symmetric)</p>
-                      </div>
-                   </div>
+                  <div className="space-y-4">
+                    <div>
+                      <span className="font-bold block mb-1 uppercase tracking-wider opacity-50">EKS Cluster</span>
+                      <p>Version: 1.29</p>
+                      <p>Name: {config.clusterName}</p>
+                      <p>Control Plane: Managed AWS</p>
+                    </div>
+                    <div>
+                      <span className="font-bold block mb-1 uppercase tracking-wider opacity-50">Identity & Access</span>
+                      <p>Orchestrator: arn:aws:iam::.../OrchestratorRole</p>
+                      <p>Node Groups: arn:aws:iam::.../NodeGroupRole</p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <span className="font-bold block mb-1 uppercase tracking-wider opacity-50">Networking</span>
+                      <p>VPC: 10.0.0.0/16</p>
+                      <p>Subnets: 3x Private, 3x Public</p>
+                      <p>Gateway: NAT Gateway (Managed)</p>
+                    </div>
+                    <div>
+                      <span className="font-bold block mb-1 uppercase tracking-wider opacity-50">Storage & Encryption</span>
+                      <p>Buckets: production-data-assets</p>
+                      <p>KMS: AWS Managed Key (Symmetric)</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Final Action Area */}
-          <div className="pt-8 border-t flex flex-col items-center gap-6">
-            <div className="flex flex-col sm:flex-row w-full gap-4">
-              <Button 
-                variant="ghost" 
-                size="lg" 
+          {/* Navigation */}
+          <div className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t z-50 h-24">
+            <div className="max-w-4xl mx-auto px-4 h-full flex items-center justify-between gap-4">
+              <Button
+                variant="ghost"
+                size="lg"
                 className="flex-1 text-muted-foreground"
-                onClick={() => router.back()}
+                onClick={() => router.push("/compute-strategy")}
               >
                 <ChevronLeft className="w-4 h-4 mr-2" />
                 Back to Edit Settings
               </Button>
-              <Button 
-                size="lg" 
+              <Button
+                size="lg"
                 className="flex-[2] bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl shadow-emerald-600/20 h-16 text-lg font-bold group"
                 onClick={handleLaunch}
                 disabled={isLaunching}
@@ -293,10 +327,6 @@ export function ReviewWizard() {
                 )}
               </Button>
             </div>
-            <p className="text-[10px] text-muted-foreground flex items-center gap-2">
-              <Lock className="w-3 h-3" />
-              Secure deployment initiated via AWS CloudFormation
-            </p>
           </div>
         </div>
       </div>
