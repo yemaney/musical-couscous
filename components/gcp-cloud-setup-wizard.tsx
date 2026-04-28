@@ -6,6 +6,15 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Cloud,
   Settings,
@@ -37,35 +46,59 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip"
 
+const GCP_REGIONS = [
+  { value: "northamerica-northeast2", label: "Toronto (northamerica-northeast2)", recommended: true },
+  { value: "us-central1", label: "Iowa (us-central1)" },
+  { value: "us-east1", label: "South Carolina (us-east1)" },
+  { value: "us-east4", label: "Northern Virginia (us-east4)" },
+  { value: "us-west1", label: "Oregon (us-west1)" },
+  { value: "europe-west1", label: "Belgium (europe-west1)" },
+  { value: "europe-west4", label: "Netherlands (europe-west4)" },
+  { value: "asia-southeast1", label: "Singapore (asia-southeast1)" },
+]
+
 type SetupMode = "recommended" | "advanced"
 type GCSAccountOption = "create" | "existing"
 
 interface WizardState {
   setupMode: SetupMode
+  region: string
+  zone1: string
+  zone2: string
   vpcName: string
   subnetName: string
   ipRangePods: string
   ipRangeServices: string
   networkCidr: string
+  useOwnVpc: boolean
   gcsAccountOption: GCSAccountOption
   gcsBucketName: string
   hmacAccessKey: string
   hmacSecretKey: string
   outputsUploaded: boolean
+  provisioningOutputs?: any
+  subdomain: string
+  projectId: string
 }
 
 const initialState: WizardState = {
   setupMode: "recommended",
+  region: "northamerica-northeast2",
+  zone1: "northamerica-northeast2-a",
+  zone2: "northamerica-northeast2-b",
   vpcName: "",
   subnetName: "",
   ipRangePods: "",
   ipRangeServices: "",
   networkCidr: "",
+  useOwnVpc: true,
   gcsAccountOption: "create",
   gcsBucketName: "",
   hmacAccessKey: "",
   hmacSecretKey: "",
   outputsUploaded: false,
+  subdomain: "testapp-app",
+  projectId: "58498364-0ad4",
 }
 
 const STEPS = [
@@ -187,9 +220,6 @@ export function GCPCloudSetupWizard() {
   const [isUploading, setIsUploading] = useState(false)
 
   const visibleSteps = useMemo(() => {
-    if (state.setupMode === "recommended") {
-      return STEPS.filter((step) => step.id !== 2)
-    }
     return STEPS
   }, [state.setupMode])
 
@@ -223,7 +253,24 @@ export function GCPCloudSetupWizard() {
     if (e.target.files && e.target.files.length > 0) {
       setIsUploading(true)
       await new Promise((resolve) => setTimeout(resolve, 1500))
-      updateState({ outputsUploaded: true })
+      
+      // Mock the output parsing since this is a UI demo
+      const mockOutputs = {
+        orchestrator_sa_email: `orchestrator-${state.projectId}@wired-height-365016.iam.gserviceaccount.com`,
+        node_sa_email: `gke-node-sa-${state.projectId}@wired-height-365016.iam.gserviceaccount.com`,
+        gcp_kms_key_name: `projects/wired-height-365016/locations/${state.region}/keyRings/gke-keyring-${state.projectId}-d30a/cryptoKeys/gke-key-${state.projectId}`,
+        wif_provider_resource_name: `projects/478466301778/locations/global/workloadIdentityPools/pool-${state.projectId}-d30a/providers/aws-provider`,
+        wif_pool_resource_name: `projects/478466301778/locations/global/workloadIdentityPools/pool-${state.projectId}-d30a`,
+        gcp_vpc_name: state.vpcName || `${state.subdomain}-${state.projectId}`,
+        gcp_subnet_name: state.subnetName || `${state.subdomain}-${state.projectId}`,
+        gcp_ip_range_pods: state.ipRangePods || `pods-${state.subdomain}-${state.projectId}`,
+        gcp_ip_range_services: state.ipRangeServices || `services-${state.subdomain}-${state.projectId}`,
+      }
+
+      updateState({ 
+        outputsUploaded: true,
+        provisioningOutputs: mockOutputs
+      })
       setIsUploading(false)
     }
   }
@@ -231,42 +278,80 @@ export function GCPCloudSetupWizard() {
   const generateCommand = () => {
     const vars: string[] = []
     if (state.setupMode === "recommended") {
-      vars.push('create_network="true"')
+      vars.push('create_vpc=true')
     } else {
-      vars.push('create_network="false"')
-      vars.push(`vpc_name="${state.vpcName || "<vpc-name>"}"`)
-      vars.push(`subnet_name="${state.subnetName || "<subnet-name>"}"`)
-      vars.push(`ip_range_pods="${state.ipRangePods || "<pods-range>"}"`)
-      vars.push(`ip_range_services="${state.ipRangeServices || "<services-range>"}"`)
-      vars.push(`network_cidr="${state.networkCidr || "<cidr>"}"`)
+      if (state.useOwnVpc) {
+        vars.push('create_vpc=false')
+        vars.push(`vpc_name=${state.vpcName || "<vpc-name>"}`)
+        vars.push(`subnet_name=${state.subnetName || "<subnet-name>"}`)
+        vars.push(`ip_range_pods=${state.ipRangePods || "<pods-range>"}`)
+        vars.push(`ip_range_services=${state.ipRangeServices || "<services-range>"}`)
+        vars.push(`network_cidr=${state.networkCidr || "<cidr>"}`)
+      } else {
+        vars.push('create_vpc=true')
+        vars.push(`network_cidr=${state.networkCidr || "<cidr>"}`)
+      }
     }
-    vars.push(`gcs_bucket_name="${state.gcsBucketName || "<bucket-name>"}"`)
-    vars.push(`hmac_access_key="${state.hmacAccessKey || "<access-key>"}"`)
-    vars.push(`hmac_secret_key="${state.hmacSecretKey || "<secret-key>"}"`)
+    vars.push(`gcs_bucket_name=${state.gcsBucketName || "<bucket-name>"}`)
+    vars.push(`hmac_access_key=${state.hmacAccessKey || "<access-key>"}`)
+    vars.push(`hmac_secret_key=${state.hmacSecretKey || "<secret-key>"}`)
+    vars.push(`gcp_location=${state.region}`)
+    vars.push(`gcp_zones=["${state.zone1}","${state.zone2}"]`)
     
-    return `terraform apply \\
-  ${vars.map(v => `-var ${v}`).join(" \\\n  ")}`
+    const inputValues = vars.join(',')
+
+    return `gcloud infra-manager deployments apply "projects/[PROJECT_ID]/locations/${state.region}/deployments/orchestrator" \\
+  --local-source="." \\
+  --input-values='${inputValues}' \\
+  --service-account="projects/[PROJECT_ID]/serviceAccounts/[SERVICE_ACCOUNT]" \\
+  --project="[PROJECT_ID]" \\
+  --location="${state.region}"`
   }
 
-  const getOutputsCommand = `terraform output -json > outputs.json`
+  const getOutputsCommand = `REVISION_ID=$(gcloud infra-manager revisions list \\
+  --deployment="projects/[PROJECT_ID]/locations/${state.region}/deployments/orchestrator" \\
+  --sort-by="~createTime" --limit=1 --format="value(name)" | awk -F/ '{print $NF}')
+
+gcloud infra-manager revisions describe $REVISION_ID \\
+  --deployment="orchestrator" \\
+  --location="${state.region}" \\
+  --format="json(applyResults.outputs)" > outputs.json`
 
   const canGoNext = () => {
     switch (currentStep) {
       case 2:
-        return (
-          (state.vpcName || "").trim() !== "" &&
-          (state.subnetName || "").trim() !== "" &&
-          (state.ipRangePods || "").trim() !== "" &&
-          (state.ipRangeServices || "").trim() !== "" &&
-          (state.networkCidr || "").trim() !== ""
-        )
+        if (state.setupMode === "recommended") {
+          return (state.region || "").trim() !== "" && (state.zone1 || "").trim() !== "" && (state.zone2 || "").trim() !== ""
+        }
+        if (state.useOwnVpc) {
+          return (
+            (state.region || "").trim() !== "" &&
+            (state.zone1 || "").trim() !== "" &&
+            (state.zone2 || "").trim() !== "" &&
+            (state.vpcName || "").trim() !== "" &&
+            (state.subnetName || "").trim() !== "" &&
+            (state.ipRangePods || "").trim() !== "" &&
+            (state.ipRangeServices || "").trim() !== "" &&
+            (state.networkCidr || "").trim() !== ""
+          )
+        } else {
+          return (state.networkCidr || "").trim() !== ""
+        }
       case 3:
+        if (state.gcsAccountOption === "create") {
+          return (state.gcsBucketName || "").trim() !== ""
+        }
         return (
           (state.gcsBucketName || "").trim() !== "" && 
           (state.hmacAccessKey || "").trim() !== "" && 
           (state.hmacSecretKey || "").trim() !== ""
         )
       case 5:
+        if (state.gcsAccountOption === "create") {
+          return state.outputsUploaded && 
+            (state.hmacAccessKey || "").trim() !== "" && 
+            (state.hmacSecretKey || "").trim() !== ""
+        }
         return state.outputsUploaded
       default:
         return true
@@ -307,40 +392,108 @@ export function GCPCloudSetupWizard() {
 
       case 2:
         return (
-          <div className="space-y-8">
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold">Network Configuration</h2>
-              <p className="text-muted-foreground text-sm">Provide details for your existing GCP network.</p>
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="text-center">
+              <div className="inline-flex p-3 rounded-2xl bg-blue-100 text-blue-600 mb-4">
+                <Network className="w-6 h-6" />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900">Network Configuration</h2>
+              <p className="mt-2 text-muted-foreground">Select your deployment region and network parameters</p>
             </div>
             
-            <Card>
-              <CardContent className="p-6 space-y-6">
-                <div className="space-y-4">
+            <div className="grid gap-8 max-w-2xl mx-auto">
+              <div className="space-y-6">
+                <div className="grid sm:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="vpcName">VPC Name *</Label>
-                    <Input id="vpcName" placeholder="testapp-app-958e7ba3-5d35" value={state.vpcName || ""} onChange={(e) => updateState({ vpcName: e.target.value })} />
+                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">GCP Region</Label>
+                    <Select
+                      value={state.region}
+                      onValueChange={(value) => updateState({ region: value, zone1: `${value}-a`, zone2: `${value}-b` })}
+                    >
+                      <SelectTrigger className="h-12 rounded-xl">
+                        <SelectValue placeholder="Region" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {GCP_REGIONS.map((region) => (
+                          <SelectItem key={region.value} value={region.value}>
+                            {region.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="subnetName">Subnet Name *</Label>
-                    <Input id="subnetName" placeholder="subnet-testapp" value={state.subnetName || ""} onChange={(e) => updateState({ subnetName: e.target.value })} />
-                  </div>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="pods">Pod IP Range Name *</Label>
-                      <Input id="pods" placeholder="pods-range" value={state.ipRangePods || ""} onChange={(e) => updateState({ ipRangePods: e.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="services">Service IP Range Name *</Label>
-                      <Input id="services" placeholder="services-range" value={state.ipRangeServices || ""} onChange={(e) => updateState({ ipRangeServices: e.target.value })} />
-                    </div>
+                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Zone 1</Label>
+                    <Input
+                      value={state.zone1}
+                      onChange={(e) => updateState({ zone1: e.target.value })}
+                      placeholder={`${state.region}-a`}
+                      className="h-12 rounded-xl"
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="cidr">Network CIDR Block *</Label>
-                    <Input id="cidr" placeholder="10.128.0.0/20" value={state.networkCidr || ""} onChange={(e) => updateState({ networkCidr: e.target.value })} />
+                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Zone 2</Label>
+                    <Input
+                      value={state.zone2}
+                      onChange={(e) => updateState({ zone2: e.target.value })}
+                      placeholder={`${state.region}-b`}
+                      className="h-12 rounded-xl"
+                    />
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+
+                {state.setupMode === "advanced" && (
+                  <div className="pt-8 border-t space-y-6 animate-in slide-in-from-top-4 duration-500">
+                    <div className="flex items-center justify-between p-4 rounded-xl border bg-muted/30 shadow-sm">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <Label className="text-sm font-bold">Use my own VPC</Label>
+                          <Badge variant="secondary" className="text-[10px] uppercase px-1.5 py-0">Bring-Your-Own</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Connect to your existing infrastructure instead of creating new resources.</p>
+                      </div>
+                      <Switch
+                        checked={state.useOwnVpc}
+                        onCheckedChange={(checked) => updateState({ useOwnVpc: checked })}
+                      />
+                    </div>
+
+                    <Card>
+                      <CardContent className="p-6 space-y-6">
+                        {state.useOwnVpc && (
+                          <div className="space-y-4 mb-6 pb-6 border-b">
+                            <div className="space-y-2">
+                              <Label htmlFor="vpcName" className="text-xs font-black uppercase tracking-widest text-muted-foreground">VPC Name</Label>
+                              <Input id="vpcName" placeholder="testapp-app-958e7ba3-5d35" value={state.vpcName || ""} onChange={(e) => updateState({ vpcName: e.target.value })} className="h-12 rounded-xl" />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="subnetName" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Subnet Name</Label>
+                              <Input id="subnetName" placeholder="subnet-testapp" value={state.subnetName || ""} onChange={(e) => updateState({ subnetName: e.target.value })} className="h-12 rounded-xl" />
+                            </div>
+                            <div className="grid sm:grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="pods" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Pod IP Range Name</Label>
+                                <Input id="pods" placeholder="pods-range" value={state.ipRangePods || ""} onChange={(e) => updateState({ ipRangePods: e.target.value })} className="h-12 rounded-xl" />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="services" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Service IP Range Name</Label>
+                                <Input id="services" placeholder="services-range" value={state.ipRangeServices || ""} onChange={(e) => updateState({ ipRangeServices: e.target.value })} className="h-12 rounded-xl" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        <div className="space-y-2">
+                          <Label htmlFor="cidr" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Network CIDR Block</Label>
+                          <Input id="cidr" placeholder="10.128.0.0/20" value={state.networkCidr || ""} onChange={(e) => updateState({ networkCidr: e.target.value })} className="h-12 rounded-xl" />
+                          <p className="text-[10px] text-muted-foreground italic">The IP range of the {state.useOwnVpc ? "existing" : "new"} VPC</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )
 
@@ -378,41 +531,20 @@ export function GCPCloudSetupWizard() {
                 </div>
               </div>
 
-              <div className="space-y-4 pt-4 border-t">
-                <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl space-y-3">
-                  <div className="flex items-center gap-2 text-blue-900 font-bold text-sm">
-                    <KeyRound className="w-4 h-4" />
-                    Create HMAC Keys
-                  </div>
-                  <p className="text-xs text-blue-700 leading-relaxed">
-                    Run this command to generate S3-compatible HMAC keys for your Service Account:
-                  </p>
-                  <div className="bg-slate-900 rounded-lg p-3 relative group">
-                    <code className="text-[10px] text-blue-300 break-all">
-                      gcloud storage hmac create --service-account=[SA_EMAIL]
-                    </code>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-1 top-1 h-6 text-white/40 hover:text-white"
-                      onClick={() => navigator.clipboard.writeText("gcloud storage hmac create --service-account=[SA_EMAIL]")}
-                    >
-                      <Copy className="w-3 h-3" />
-                    </Button>
+              {state.gcsAccountOption === "existing" && (
+                <div className="space-y-4 pt-4 border-t">
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="accessKey">HMAC Access Key *</Label>
+                      <Input id="accessKey" placeholder="GOOG..." value={state.hmacAccessKey || ""} onChange={(e) => updateState({ hmacAccessKey: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secretKey">HMAC Secret Key *</Label>
+                      <Input id="secretKey" type="password" placeholder="••••••••" value={state.hmacSecretKey || ""} onChange={(e) => updateState({ hmacSecretKey: e.target.value })} />
+                    </div>
                   </div>
                 </div>
-
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="accessKey">HMAC Access Key *</Label>
-                    <Input id="accessKey" placeholder="GOOG..." value={state.hmacAccessKey || ""} onChange={(e) => updateState({ hmacAccessKey: e.target.value })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="secretKey">HMAC Secret Key *</Label>
-                    <Input id="secretKey" type="password" placeholder="••••••••" value={state.hmacSecretKey || ""} onChange={(e) => updateState({ hmacSecretKey: e.target.value })} />
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         )
@@ -446,10 +578,9 @@ export function GCPCloudSetupWizard() {
                 <div className="flex-1 space-y-4">
                   <p className="text-lg font-bold">Apply Configuration</p>
                   <p className="text-sm text-muted-foreground leading-relaxed">
-                    Initialize Terraform and apply the changes to your GCP project:
+                    Deploy your infrastructure using GCP Infrastructure Manager. Ensure you run this inside the directory with your <code className="px-1.5 py-0.5 bg-muted rounded font-mono">main.tf</code>:
                   </p>
                   <div className="space-y-3">
-                    <CommandBlock command="terraform init" />
                     <CommandBlock command={generateCommand()} />
                   </div>
                 </div>
@@ -461,7 +592,7 @@ export function GCPCloudSetupWizard() {
                 <div className="flex-1 space-y-4">
                   <p className="text-lg font-bold">Export Deployment Metadata</p>
                   <p className="text-sm text-muted-foreground leading-relaxed">
-                    Once the apply completes, export the outputs to a JSON file for the next step:
+                    Once the deployment completes, export the outputs to a JSON file for the next step:
                   </p>
                   <CommandBlock command={getOutputsCommand} />
                 </div>
@@ -500,6 +631,45 @@ export function GCPCloudSetupWizard() {
                   </label>
                 </div>
               </div>
+
+              {/* Step 5: S3 Credentials */}
+              {state.gcsAccountOption === "create" && (
+                <div className="flex items-start gap-6">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-black shrink-0">5</div>
+                  <div className="flex-1 space-y-4 min-w-0">
+                    <div className="space-y-1">
+                      <p className="text-lg font-bold">Create HMAC Keys</p>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        Run this command to generate S3-compatible HMAC keys for your new Service Account. You can find the Service Account email in the outputs.json file.
+                      </p>
+                    </div>
+
+                    <CommandBlock command="gcloud storage hmac create --service-account=[SA_EMAIL]" />
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 w-full">
+                      <div className="space-y-2">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">HMAC Access Key</Label>
+                        <Input
+                          placeholder="GOOG..."
+                          value={state.hmacAccessKey || ""}
+                          onChange={(e) => updateState({ hmacAccessKey: e.target.value })}
+                          className="h-10 rounded-lg font-mono text-xs"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">HMAC Secret Key</Label>
+                        <Input
+                          type="password"
+                          placeholder="••••••••••••••••"
+                          value={state.hmacSecretKey || ""}
+                          onChange={(e) => updateState({ hmacSecretKey: e.target.value })}
+                          className="h-10 rounded-lg"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )

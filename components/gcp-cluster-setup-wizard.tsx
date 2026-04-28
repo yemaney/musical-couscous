@@ -7,13 +7,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -30,6 +23,7 @@ import {
   Network,
   DollarSign,
   Info,
+  Database,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -49,24 +43,22 @@ function generateClusterName() {
   return `${randomAdj}-${randomNoun}-${randomNum}`
 }
 
-const GCP_REGIONS = [
-  { value: "us-central1", label: "US Central (Iowa)", recommended: true },
-  { value: "us-east1", label: "US East (S. Carolina)" },
-  { value: "us-west1", label: "US West (Oregon)" },
-  { value: "europe-west1", label: "Europe (Belgium)" },
-  { value: "europe-west3", label: "Europe (Frankfurt)" },
-  { value: "asia-southeast1", label: "Asia Pacific (Singapore)" },
-]
 
 interface ClusterState {
   clusterName: string
   region: string
-  serviceAccount: string
-  network: string
-  subnet: string
+  zones: string[]
+  vpcName: string
+  subnetName: string
   podRange: string
   serviceRange: string
-  kubernetesVersion: string
+  orchestratorSaEmail: string
+  nodeSaEmail: string
+  wifProvider: string
+  wifPool: string
+  kmsKeyName: string
+  backupSaEmail: string
+  gcsBucketName: string
 }
 
 function HelperTooltip({ text }: { text: string }) {
@@ -148,31 +140,61 @@ function SectionCard({
 
 export function GCPClusterSetupWizard() {
   const router = useRouter()
-  const [previousSetupMode, setPreviousSetupMode] = useState<"recommended" | "advanced">("recommended")
   const [state, setState] = useState<ClusterState>({
     clusterName: "",
-    region: "us-central1",
-    serviceAccount: "",
-    network: "",
-    subnet: "",
-    podRange: "10.4.0.0/14",
-    serviceRange: "10.0.32.0/20",
-    kubernetesVersion: "1.29",
+    region: "northamerica-northeast2",
+    zones: ["northamerica-northeast2-a", "northamerica-northeast2-b"],
+    vpcName: "testapp-app-58498364-0ad4",
+    subnetName: "testapp-app-58498364-0ad4",
+    podRange: "pods-testapp-app-58498364-0ad4",
+    serviceRange: "services-testapp-app-58498364-0ad4",
+    orchestratorSaEmail: "orchestrator-58498364-0ad4@wired-height-365016.iam.gserviceaccount.com",
+    nodeSaEmail: "gke-node-sa-58498364-0ad4@wired-height-365016.iam.gserviceaccount.com",
+    wifProvider: "projects/478466301778/locations/global/workloadIdentityPools/pool-58498364-0ad4-d30a/providers/aws-provider",
+    wifPool: "projects/478466301778/locations/global/workloadIdentityPools/pool-58498364-0ad4-d30a",
+    kmsKeyName: "projects/wired-height-365016/locations/northamerica-northeast2/keyRings/gke-keyring-58498364-0ad4-d30a/cryptoKeys/gke-key-58498364-0ad4",
+    backupSaEmail: "backup-sa-58498364-0ad4@wired-height-365016.iam.gserviceaccount.com",
+    gcsBucketName: "",
   })
 
   useEffect(() => {
-    const savedState = localStorage.getItem("gcpCloudSetupState")
-    if (savedState) {
+    // Try to load from gcpCloudSetupState outputs first
+    const setupStateRaw = localStorage.getItem("gcpCloudSetupState")
+    if (setupStateRaw) {
       try {
-        const cloudState = JSON.parse(savedState)
-        setPreviousSetupMode(cloudState.setupMode || "recommended")
-        setState(prev => ({
-          ...prev,
-          network: cloudState.vpcName || prev.network,
-          subnet: cloudState.subnetNames || prev.subnet,
-        }))
+        const setupState = JSON.parse(setupStateRaw)
+        if (setupState.provisioningOutputs) {
+          const outputs = setupState.provisioningOutputs
+          setState(prev => ({
+            ...prev,
+            vpcName: outputs.gcp_vpc_name || prev.vpcName,
+            subnetName: outputs.gcp_subnet_name || prev.subnetName,
+            podRange: outputs.gcp_ip_range_pods || prev.podRange,
+            serviceRange: outputs.gcp_ip_range_services || prev.serviceRange,
+            region: outputs.gcp_location || prev.region,
+            zones: outputs.gcp_zones ? JSON.parse(outputs.gcp_zones) : prev.zones,
+            orchestratorSaEmail: outputs.orchestrator_sa_email || prev.orchestratorSaEmail,
+            nodeSaEmail: outputs.node_sa_email || prev.nodeSaEmail,
+            wifProvider: outputs.wif_provider_resource_name || prev.wifProvider,
+            wifPool: outputs.wif_pool_resource_name || prev.wifPool,
+            kmsKeyName: outputs.gcp_kms_key_name || prev.kmsKeyName,
+            backupSaEmail: outputs.backup_sa_email || prev.backupSaEmail,
+            gcsBucketName: setupState.gcsBucketName || prev.gcsBucketName,
+          }))
+        } else {
+          setState(prev => ({
+            ...prev,
+            vpcName: setupState.vpcName || prev.vpcName,
+            subnetName: setupState.subnetName || prev.subnetName,
+            podRange: setupState.ipRangePods || prev.podRange,
+            serviceRange: setupState.ipRangeServices || prev.serviceRange,
+            region: setupState.region || prev.region,
+            zones: setupState.zones || prev.zones,
+            gcsBucketName: setupState.gcsBucketName || prev.gcsBucketName,
+          }))
+        }
       } catch (e) {
-        console.error("Failed to load previous step data", e)
+        console.error("Failed to parse setup state", e)
       }
     }
   }, [])
@@ -191,11 +213,8 @@ export function GCPClusterSetupWizard() {
     })
   }
 
-  const isRecommendedMode = previousSetupMode === "recommended"
-
   const validations = {
     clusterName: state.clusterName.length >= 3,
-    region: !!state.region,
     permissions: true,
     encryption: true,
   }
@@ -222,119 +241,245 @@ export function GCPClusterSetupWizard() {
           </div>
         </div>
 
+        {/* Basic Setup - Always visible */}
         <div className="space-y-6 mb-6">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 rounded-lg bg-blue-100">
-                  <Globe className="w-5 h-5 text-blue-600" />
+                <div className="p-2 rounded-lg bg-emerald-100">
+                  <Globe className="w-5 h-5 text-emerald-600" />
                 </div>
-                <h2 className="font-semibold text-lg">Basic Setup</h2>
+                <h2 className="font-semibold text-lg text-foreground">System Identity</h2>
               </div>
 
               <div className="space-y-6">
+                {/* Cluster Name */}
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Label htmlFor="region">Region</Label>
-                    <HelperTooltip text="The GCP region for your GKE cluster" />
+                    <Label htmlFor="clusterName">System Name</Label>
+                    <HelperTooltip text="A unique ID for your system. This is automatically assigned." />
                   </div>
-                  <Select value={state.region} onValueChange={(value) => updateState({ region: value })}>
-                    <SelectTrigger id="region" className="w-full">
-                      <SelectValue placeholder="Select a region" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {GCP_REGIONS.map((region) => (
-                        <SelectItem key={region.value} value={region.value}>
-                          <div className="flex items-center gap-2">
-                            <span>{region.label}</span>
-                            {region.recommended && <span className="text-xs text-blue-600 font-medium">Recommended</span>}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="clusterName">Cluster Name</Label>
-                    <HelperTooltip text="Unique identifier for your GKE cluster" />
+                  <div className="flex gap-2">
+                    <Input
+                      id="clusterName"
+                      value={state.clusterName}
+                      readOnly
+                      className="bg-muted/50 cursor-not-allowed font-mono"
+                    />
                   </div>
-                  <Input id="clusterName" value={state.clusterName} readOnly className="bg-muted/50 font-mono" />
+                  <p className="text-xs text-muted-foreground">
+                    This unique identifier is automatically assigned to your project.
+                  </p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
+        {/* Collapsible Sections */}
         <div className="space-y-4 mb-8">
-          <SectionCard title="Security & IAM" icon={Shield} badge="Auto-managed" defaultOpen={false}>
-            <div className="space-y-4 pt-4">
-              <p className="text-sm text-muted-foreground">Dedicated service accounts will be created for cluster management.</p>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                   <Label className="text-muted-foreground">Workload Identity</Label>
-                   <div className="flex items-center gap-2 text-sm text-blue-600">
-                     <CheckCircle2 className="w-4 h-4" />
-                     <span>Enabled by default</span>
+          {/* Network Foundation Section */}
+          <SectionCard
+            title="Your Private Network"
+            icon={Network}
+            badge="Read-only · Auto-filled"
+            defaultOpen={true}
+          >
+            <div className="space-y-6 pt-4">
+              <p className="text-sm text-muted-foreground">
+                Your system will run inside the private network that was already set up for you. These values were imported from your setup file.
+              </p>
+
+              <div className="grid gap-4">
+                <div className="grid sm:grid-cols-2 gap-4">
+                   <div className="space-y-1.5 p-3 rounded-xl bg-blue-50/50 border border-blue-100/50">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Globe className="w-3.5 h-3.5 text-blue-600" />
+                        <Label className="text-[10px] uppercase font-bold tracking-widest text-blue-900/60">Deployment Region</Label>
+                      </div>
+                      <code className="block p-2 bg-white/80 rounded-lg text-[11px] font-bold text-blue-900 font-mono border border-blue-200/50">
+                        {state.region || "us-central1"}
+                      </code>
+                   </div>
+                   <div className="space-y-1.5 p-3 rounded-xl bg-emerald-50/50 border border-emerald-100/50">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Settings className="w-3.5 h-3.5 text-emerald-600" />
+                        <Label className="text-[10px] uppercase font-bold tracking-widest text-emerald-900/60">Availability Zones</Label>
+                      </div>
+                      <code className="block p-2 bg-white/80 rounded-lg text-[11px] font-bold text-emerald-900 font-mono border border-emerald-200/50">
+                        {state.zones?.join(", ") || "us-central1-a, us-central1-b"}
+                      </code>
                    </div>
                 </div>
-                <div className="space-y-2">
-                   <Label className="text-muted-foreground">Node Service Account</Label>
-                   <div className="flex items-center gap-2 text-sm text-blue-600">
-                     <CheckCircle2 className="w-4 h-4" />
-                     <span>Provisioned automatically</span>
+
+                <div className="space-y-1">
+                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">VPC Network</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-0.5">Your private network's unique identifier</p>
+                    <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                      {state.vpcName || "Pending..."}
+                    </code>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Subnet</Label>
+                  <p className="text-[10px] text-muted-foreground -mt-0.5">Internal access points for your system's servers</p>
+                  <code className="block p-2 bg-muted rounded text-[10px] font-mono border break-all">
+                    {state.subnetName || "Pending..."}
+                  </code>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                   <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Pod IP Range</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                        {state.podRange || "Pending..."}
+                      </code>
+                   </div>
+                   <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Service IP Range</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                        {state.serviceRange || "Pending..."}
+                      </code>
                    </div>
                 </div>
               </div>
             </div>
           </SectionCard>
 
-          {!isRecommendedMode && (
-            <SectionCard title="Networking (VPC)" icon={Network} badge="Advanced" defaultOpen={false}>
-              <div className="space-y-4 pt-4">
-                <div className="grid gap-4">
+          {/* Security Section */}
+          <SectionCard
+            title="Security Permissions"
+            icon={Shield}
+            badge="Read-only · Auto-filled"
+            defaultOpen={false}
+          >
+            <div className="space-y-4 pt-4">
+              <p className="text-sm text-muted-foreground">
+                These permissions were automatically set up to keep your system secure. No action needed.
+              </p>                <div className="space-y-6">
+                  {/* Deployment Service Account */}
                   <div className="space-y-2">
-                    <Label>VPC Network</Label>
-                    <Input value={state.network} onChange={(e) => updateState({ network: e.target.value })} />
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-semibold">Deployment Permission</Label>
+                      <HelperTooltip text="Allows the system to automatically provision your infrastructure on your behalf." />
+                    </div>
+                    <div className="ml-6 space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Service Account</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                        {state.orchestratorSaEmail || "Pending outputs..."}
+                      </code>
+                    </div>
                   </div>
+
+                  {/* Node Service Account */}
                   <div className="space-y-2">
-                    <Label>Subnet</Label>
-                    <Input value={state.subnet} onChange={(e) => updateState({ subnet: e.target.value })} />
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-semibold">Server Permission</Label>
+                      <HelperTooltip text="Permissions granted to the underlying compute instances." />
+                    </div>
+                    <div className="ml-6 space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Node Service Account</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                        {state.nodeSaEmail || "Pending outputs..."}
+                      </code>
+                    </div>
+                  </div>
+
+                  {/* Backup Service Account */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-semibold">Backup & Storage</Label>
+                      <HelperTooltip text="Dedicated identity for storage operations and cluster backups." />
+                    </div>
+                    <div className="ml-6 space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Backup Service Account</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                        {state.backupSaEmail || "Pending outputs..."}
+                      </code>
+                    </div>
+                  </div>
+
+                  {/* Workload Identity */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-semibold">Workload Identity</Label>
+                      <HelperTooltip text="Securely connects external identities to Google Cloud services." />
+                    </div>
+                    <div className="ml-6 space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Provider</Label>
+                        <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                          {state.wifProvider || "Pending outputs..."}
+                        </code>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Pool</Label>
+                        <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                          {state.wifPool || "Pending outputs..."}
+                        </code>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Encryption */}
+                  <div className="space-y-2 pt-4 border-t border-dashed">
+                    <div className="flex items-center gap-2 text-blue-600">
+                      <Lock className="w-4 h-4" />
+                      <Label className="text-sm font-bold">Data Encryption Key</Label>
+                      <HelperTooltip text="Customer Managed Encryption Key (CMEK) used for GKE application-layer secrets." />
+                    </div>
+                    <div className="ml-6 space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">KMS Key Resource</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                        {state.kmsKeyName || "Pending outputs..."}
+                      </code>
+                    </div>
                   </div>
                 </div>
               </div>
             </SectionCard>
-          )}
 
-          <SectionCard title="Advanced Settings" icon={Settings} defaultOpen={false}>
+          {/* Storage Section */}
+          <SectionCard
+            title="Cloud Storage"
+            icon={Database}
+            badge="Auto-detected"
+            defaultOpen={true}
+          >
             <div className="space-y-4 pt-4">
-              <div className="grid gap-4">
-                <div className="space-y-2">
-                  <Label>Kubernetes Version</Label>
-                  <Select value={state.kubernetesVersion} onValueChange={(v) => updateState({ kubernetesVersion: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1.29">1.29 (Rapid)</SelectItem>
-                      <SelectItem value="1.28">1.28 (Regular)</SelectItem>
-                    </SelectContent>
-                  </Select>
+              <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg flex gap-3">
+                <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-700">
+                  This bucket is used as the primary storage for system backups and your internal datalake.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Primary Data Bucket</Label>
+                  <HelperTooltip text="The GCS bucket where your system backups and data files are stored." />
+                </div>
+                <div className="ml-6 space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">GCS Bucket Name</Label>
+                  <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                    {state.gcsBucketName || "Not configured"}
+                  </code>
                 </div>
               </div>
             </div>
           </SectionCard>
+
         </div>
 
         <Card className="mb-8">
           <CardContent className="p-4 flex flex-wrap gap-4">
             <ValidationBadge valid={validations.clusterName} label="Name generated" />
-            <ValidationBadge valid={validations.region} label="Region set" />
             <ValidationBadge valid={validations.permissions} label="IAM ready" />
           </CardContent>
         </Card>
 
         <div className="flex justify-between items-center">
-          <Button variant="outline" onClick={() => router.back()}>Back</Button>
+          <Button variant="outline" onClick={() => router.push("/gcp/cloud-setup")}>Back</Button>
           <Button
             size="lg"
             disabled={!allValid}

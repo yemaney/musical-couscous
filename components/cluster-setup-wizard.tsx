@@ -31,6 +31,7 @@ import {
   Network,
   DollarSign,
   Info,
+  Database,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -83,6 +84,8 @@ interface ClusterState {
   publicSubnetIds: string
   securityGroupIds: string
   clusterSecurityGroupId: string
+  // Storage
+  s3BucketName: string
   // Advanced
   serviceCidr: string
   // Provisioned Outputs
@@ -176,8 +179,8 @@ export function ClusterSetupWizard() {
     subdomain: "",
     projectId: "",
     region: "us-east-1",
-    az1: "",
-    az2: "",
+    az1: "us-east-1a",
+    az2: "us-east-1b",
     orchestratorRoleArn: "",
     nodeGroupRoleArn: "",
     clusterRoleArn: "",
@@ -191,6 +194,7 @@ export function ClusterSetupWizard() {
     securityGroupIds: "",
     clusterSecurityGroupId: "",
     serviceCidr: "172.20.0.0/16",
+    s3BucketName: "",
   })
 
   // Load data from previous step
@@ -205,9 +209,10 @@ export function ClusterSetupWizard() {
         
         setState(prev => ({
           ...prev,
-          region: cloudState.region || prev.region,
-          az1: cloudState.az1 || prev.az1,
-          az2: cloudState.az2 || prev.az2,
+          region: cloudState.region || outputs.Region || prev.region,
+          az1: cloudState.az1 || outputs.AvailabilityZone1 || prev.az1,
+          az2: cloudState.az2 || outputs.AvailabilityZone2 || prev.az2,
+          s3BucketName: cloudState.s3BucketName || prev.s3BucketName,
           vpcId: outputs.VpcId || cloudState.vpcId || prev.vpcId,
           vpcCidr: outputs.VpcCidrBlock || prev.vpcCidr,
           subnetIds: (() => {
@@ -347,7 +352,7 @@ export function ClusterSetupWizard() {
             title="Your Private Network"
             icon={Network}
             badge="Read-only · Auto-filled"
-            defaultOpen={false}
+            defaultOpen={true}
           >
             <div className="space-y-6 pt-4">
               <p className="text-sm text-muted-foreground">
@@ -355,6 +360,27 @@ export function ClusterSetupWizard() {
               </p>
 
               <div className="grid gap-4">
+                <div className="grid sm:grid-cols-2 gap-4">
+                   <div className="space-y-1.5 p-3 rounded-xl bg-blue-50/50 border border-blue-100/50">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Globe className="w-3.5 h-3.5 text-blue-600" />
+                        <Label className="text-[10px] uppercase font-bold tracking-widest text-blue-900/60">Deployment Region</Label>
+                      </div>
+                      <code className="block p-2 bg-white/80 rounded-lg text-[11px] font-bold text-blue-900 font-mono border border-blue-200/50">
+                        {state.region || "us-east-1"}
+                      </code>
+                   </div>
+                   <div className="space-y-1.5 p-3 rounded-xl bg-emerald-50/50 border border-emerald-100/50">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Settings className="w-3.5 h-3.5 text-emerald-600" />
+                        <Label className="text-[10px] uppercase font-bold tracking-widest text-emerald-900/60">Availability Zones</Label>
+                      </div>
+                      <code className="block p-2 bg-white/80 rounded-lg text-[11px] font-bold text-emerald-900 font-mono border border-emerald-200/50">
+                        {[state.az1, state.az2].filter(Boolean).join(", ") || "us-east-1a, us-east-1b"}
+                      </code>
+                   </div>
+                </div>
+
                 <div className="space-y-1">
                     <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Network ID</Label>
                     <p className="text-[10px] text-muted-foreground -mt-0.5">Your private network's unique identifier</p>
@@ -433,84 +459,121 @@ export function ClusterSetupWizard() {
                 These permissions were automatically set up to keep your system secure. No action needed.
               </p>
 
-              <div className="space-y-4">
-                {state.orchestratorRoleArn && (
-                  <div className="space-y-2 pt-2">
+                <div className="space-y-6">
+                  {/* Deployment Role */}
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <Label className="text-muted-foreground">Deployment Permission</Label>
+                      <Label className="text-sm font-semibold">Deployment Permission</Label>
                       <HelperTooltip text="Allows the system to automatically provision your infrastructure on your behalf." />
                     </div>
-                    <div className="ml-6">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
-                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
-                        {state.orchestratorRoleArn}
+                    <div className="ml-6 space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Orchestrator Role ARN</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                        {state.orchestratorRoleArn || "Pending outputs..."}
                       </code>
                     </div>
                   </div>
-                )}
 
-                {state.nodeGroupRoleArn && (
-                  <div className="space-y-2 pt-2">
+                  {/* Worker Node Role */}
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <Label className="text-muted-foreground">Server Permission</Label>
+                      <Label className="text-sm font-semibold">Server Permission</Label>
                       <HelperTooltip text="Allows your compute servers to operate securely within your account." />
                     </div>
-                    <div className="ml-6">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
-                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
-                        {state.nodeGroupRoleArn}
+                    <div className="ml-6 space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Node Group Role ARN</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                        {state.nodeGroupRoleArn || "Pending outputs..."}
                       </code>
                     </div>
                   </div>
-                )}
 
-                {state.clusterRoleArn && (
-                  <div className="space-y-2 pt-2">
+                  {/* System Management Role */}
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <Label className="text-muted-foreground">System Management Permission</Label>
+                      <Label className="text-sm font-semibold">System Management</Label>
                       <HelperTooltip text="Allows the system's control center to manage your servers and networking." />
                     </div>
-                    <div className="ml-6">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
-                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
-                        {state.clusterRoleArn}
+                    <div className="ml-6 space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Cluster Role ARN</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                        {state.clusterRoleArn || "Pending outputs..."}
                       </code>
                     </div>
                   </div>
-                )}
 
-                {state.kmsKeyArn && (
-                  <div className="space-y-2 pt-2 border-t border-dashed mt-4">
+                  {/* Karpenter Role */}
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <Label className="text-muted-foreground font-semibold flex items-center gap-2">
-                        <Lock className="w-3.5 h-3.5" />
-                        Data Encryption Key
-                      </Label>
+                      <Label className="text-sm font-semibold">Auto-Scaling Permission</Label>
+                      <HelperTooltip text="Allows the Karpenter controller to provision and manage worker nodes dynamically." />
+                    </div>
+                    <div className="ml-6 space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Karpenter Controller Role ARN</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                        {state.karpenterRoleArn || "Pending outputs..."}
+                      </code>
+                    </div>
+                  </div>
+
+                  {/* Velero Role */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-semibold">Backup & Recovery</Label>
+                      <HelperTooltip text="Used by Velero to manage cluster backups and snapshots securely." />
+                    </div>
+                    <div className="ml-6 space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Velero Server Role ARN</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                        {state.veleroRoleArn || "Pending outputs..."}
+                      </code>
+                    </div>
+                  </div>
+
+                  {/* Encryption */}
+                  <div className="space-y-2 pt-4 border-t border-dashed">
+                    <div className="flex items-center gap-2 text-emerald-600">
+                      <Lock className="w-4 h-4" />
+                      <Label className="text-sm font-bold">Data Encryption Key</Label>
                       <HelperTooltip text="Used to encrypt your system secrets and configuration data at rest." />
                     </div>
-                    <div className="ml-6">
+                    <div className="ml-6 space-y-1">
                       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">KMS Key ARN</Label>
-                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
-                        {state.kmsKeyArn}
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                        {state.kmsKeyArn || "Pending outputs..."}
                       </code>
                     </div>
                   </div>
-                )}
+                </div>
+              </div>
+            </SectionCard>
 
-                {state.karpenterRoleArn && (
-                  <div className="space-y-2 pt-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-muted-foreground">Auto-scaling Permission</Label>
-                      <HelperTooltip text="Allows the system to automatically add or remove servers based on demand." />
-                    </div>
-                    <div className="ml-6">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
-                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
-                        {state.karpenterRoleArn}
-                      </code>
-                    </div>
-                  </div>
-                )}
+          {/* Storage Section */}
+          <SectionCard
+            title="Cloud Storage"
+            icon={Database}
+            badge="Auto-detected"
+            defaultOpen={true}
+          >
+            <div className="space-y-4 pt-4">
+              <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg flex gap-3">
+                <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-700">
+                  This bucket is used as the primary storage for system backups and your internal datalake.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Primary Data Bucket</Label>
+                  <HelperTooltip text="The S3 bucket where your system backups and data files are stored." />
+                </div>
+                <div className="ml-6 space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">S3 Bucket Name</Label>
+                  <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
+                    {state.s3BucketName || "Not configured"}
+                  </code>
+                </div>
               </div>
             </div>
           </SectionCard>

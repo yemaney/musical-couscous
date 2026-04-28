@@ -51,8 +51,8 @@ interface HyperlakeState {
   icebergBackupSchedule: string
   // Addons & Spot
   isAddonEnabled: boolean
-  addonCpu: number
-  addonMemory: number
+  addonMachineType: string
+  addonMaxNodes: number
   useSpot: boolean
   baseMachineType: string
   baseMinNodes: number
@@ -133,8 +133,8 @@ export function GCPComputeStrategyWizard() {
     icebergRetention: 30,
     icebergBackupSchedule: "daily",
     isAddonEnabled: true,
-    addonCpu: 2,
-    addonMemory: 8,
+    addonMachineType: "n2-standard-2",
+    addonMaxNodes: 1,
     useSpot: true,
     baseMachineType: "n2-standard-2",
     baseMinNodes: 1,
@@ -151,7 +151,7 @@ export function GCPComputeStrategyWizard() {
         const parsed = JSON.parse(saved)
         // Migration: If user has old default min/max nodes, reset to new standards
         if (parsed.preset === "balanced" && (parsed.minNodes === 1 || parsed.baseMaxNodes === 2)) {
-          setState({ ...parsed, baseMinNodes: 1, baseMaxNodes: 1, minNodes: 2, maxNodes: 3, isAddonEnabled: true, addonCpu: 2, isBackupEnabled: true })
+          setState({ ...parsed, baseMinNodes: 1, baseMaxNodes: 1, minNodes: 2, maxNodes: 3, isAddonEnabled: true, isBackupEnabled: true })
         } else {
           setState(parsed)
         }
@@ -182,14 +182,14 @@ export function GCPComputeStrategyWizard() {
       balanced: { 
         machineType: "n2-standard-4", minNodes: 2, maxNodes: 3,
         baseMachineType: "n2-standard-2", baseMinNodes: 1, baseMaxNodes: 1,
-        isAddonEnabled: true, addonCpu: 2, addonMemory: 8,
+        isAddonEnabled: true, addonMachineType: "n2-standard-2", addonMaxNodes: 1,
         useSpot: true,
         isBackupEnabled: true, backupSchedule: "daily" as const
       },
       high: { 
         machineType: "n2-standard-8", minNodes: 3, maxNodes: 5,
         baseMachineType: "n2-standard-4", baseMinNodes: 2, baseMaxNodes: 2,
-        isAddonEnabled: true, addonCpu: 4, addonMemory: 16,
+        isAddonEnabled: true, addonMachineType: "n2-standard-4", addonMaxNodes: 2,
         useSpot: false,
         isBackupEnabled: true, backupSchedule: "daily" as const
       },
@@ -221,11 +221,11 @@ export function GCPComputeStrategyWizard() {
     const base = getRes(state.baseMachineType)
     const worker = getRes(state.machineType)
     
-    const minCpu = (state.baseMinNodes * base.cpu) + (state.minNodes * worker.cpu) + (state.isAddonEnabled ? state.addonCpu : 0)
-    const maxCpu = (state.baseMaxNodes * base.cpu) + (state.maxNodes * worker.cpu) + (state.isAddonEnabled ? state.addonCpu : 0)
+    const minCpu = (state.baseMinNodes * base.cpu) + (state.minNodes * worker.cpu)
+    const maxCpu = (state.baseMaxNodes * base.cpu) + (state.maxNodes * worker.cpu)
     
     return { minCpu, maxCpu, base, worker }
-  }, [state.baseMachineType, state.machineType, state.baseMinNodes, state.baseMaxNodes, state.minNodes, state.maxNodes, state.isAddonEnabled, state.addonCpu])
+  }, [state.baseMachineType, state.machineType, state.baseMinNodes, state.baseMaxNodes, state.minNodes, state.maxNodes, state.isAddonEnabled])
 
   return (
     <div className="min-h-screen bg-background pb-32">
@@ -327,8 +327,7 @@ export function GCPComputeStrategyWizard() {
                         <Switch 
                           checked={state.isAddonEnabled} 
                           onCheckedChange={(v) => {
-                            const defaults = state.preset === "high" ? { addonCpu: 4, addonMemory: 16 } : { addonCpu: 2, addonMemory: 8 }
-                            updateState({ isAddonEnabled: v, ...defaults })
+                            updateState({ isAddonEnabled: v })
                           }}
                           className="data-[state=checked]:bg-blue-600"
                         />
@@ -511,20 +510,27 @@ export function GCPComputeStrategyWizard() {
                           />
                         </div>
                         {state.isAddonEnabled && (
-                          <div className="grid sm:grid-cols-2 gap-10 pt-8 border-t border-blue-100 animate-in slide-in-from-top-4 duration-500">
-                            <div className="space-y-4">
-                              <div className="flex justify-between items-center">
-                                <Label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Addon CPU Limit</Label>
-                                <span className="font-black text-blue-600 text-xs">{state.addonCpu} vCPU</span>
+                          <div className="pt-8 border-t border-blue-100 animate-in slide-in-from-top-4 duration-500 space-y-10">
+                            <div className="grid sm:grid-cols-2 gap-10">
+                              <div className="space-y-4">
+                                <Label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Addon Machine Type</Label>
+                                <select 
+                                  value={state.addonMachineType} 
+                                  onChange={(e) => updateState({ addonMachineType: e.target.value })}
+                                  className="w-full h-12 rounded-xl bg-muted/20 border-2 border-transparent focus:border-blue-500 outline-none px-4 font-bold text-sm"
+                                >
+                                  <option value="n2-standard-2">n2-standard-2 (2 vCPU, 8GB)</option>
+                                  <option value="n2-standard-4">n2-standard-4 (4 vCPU, 16GB)</option>
+                                  <option value="e2-standard-2">e2-standard-2 (Cost Optimized)</option>
+                                </select>
                               </div>
-                              <Slider value={[state.addonCpu]} min={1} max={16} step={1} onValueChange={([v]) => updateState({ addonCpu: v })} />
-                            </div>
-                            <div className="space-y-4">
-                              <div className="flex justify-between items-center">
-                                <Label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Addon Memory</Label>
-                                <span className="font-black text-blue-600 text-xs">{state.addonMemory} GB</span>
+                              <div className="space-y-4">
+                                <div className="flex justify-between items-center">
+                                  <Label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Max Addon Nodes</Label>
+                                  <span className="font-black text-blue-600 text-xs">{state.addonMaxNodes} Node</span>
+                                </div>
+                                <Slider value={[state.addonMaxNodes]} min={1} max={5} step={1} onValueChange={([v]) => updateState({ addonMaxNodes: v })} />
                               </div>
-                              <Slider value={[state.addonMemory]} min={2} max={64} step={2} onValueChange={([v]) => updateState({ addonMemory: v })} />
                             </div>
                           </div>
                         )}
@@ -728,7 +734,7 @@ export function GCPComputeStrategyWizard() {
 
 
           <div className="pt-12 flex flex-col sm:flex-row justify-between items-center gap-6">
-            <Button variant="ghost" onClick={() => router.back()} className="h-14 px-8 font-bold text-muted-foreground hover:text-blue-600">
+            <Button variant="ghost" onClick={() => router.push("/gcp/cluster-setup")} className="h-14 px-8 font-bold text-muted-foreground hover:text-blue-600">
               <ChevronLeft className="w-4 h-4 mr-2" /> Back
             </Button>
             <Button 
