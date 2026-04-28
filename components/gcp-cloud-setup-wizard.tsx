@@ -79,6 +79,8 @@ interface WizardState {
   provisioningOutputs?: any
   subdomain: string
   projectId: string
+  createNetwork: boolean
+  createStorageBackupSa: boolean
 }
 
 const initialState: WizardState = {
@@ -99,6 +101,8 @@ const initialState: WizardState = {
   outputsUploaded: false,
   subdomain: "testapp-app",
   projectId: "58498364-0ad4",
+  createNetwork: true,
+  createStorageBackupSa: true,
 }
 
 const STEPS = [
@@ -277,11 +281,18 @@ export function GCPCloudSetupWizard() {
 
   const generateCommand = () => {
     const vars: string[] = []
-    if (state.setupMode === "recommended") {
-      vars.push('create_vpc=true')
-    } else {
+    vars.push(`create_network=${state.createNetwork}`)
+    vars.push(`create_storage_backup_sa=${state.createStorageBackupSa}`)
+
+    if (!state.createNetwork) {
+        vars.push(`existing_network_name=${state.vpcName || "<vpc-name>"}`)
+        vars.push(`existing_subnet_name=${state.subnetName || "<subnet-name>"}`)
+        vars.push(`existing_ip_range_pods=${state.ipRangePods || "<pods-range>"}`)
+        vars.push(`existing_ip_range_services=${state.ipRangeServices || "<services-range>"}`)
+    }
+
+    if (state.setupMode === "advanced") {
       if (state.useOwnVpc) {
-        vars.push('create_vpc=false')
         vars.push(`vpc_name=${state.vpcName || "<vpc-name>"}`)
         vars.push(`subnet_name=${state.subnetName || "<subnet-name>"}`)
         vars.push(`ip_range_pods=${state.ipRangePods || "<pods-range>"}`)
@@ -453,8 +464,8 @@ gcloud infra-manager revisions describe $REVISION_ID \\
                         <p className="text-xs text-muted-foreground">Connect to your existing infrastructure instead of creating new resources.</p>
                       </div>
                       <Switch
-                        checked={state.useOwnVpc}
-                        onCheckedChange={(checked) => updateState({ useOwnVpc: checked })}
+                        checked={!state.createNetwork}
+                        onCheckedChange={(checked) => updateState({ createNetwork: !checked, useOwnVpc: checked })}
                       />
                     </div>
 
@@ -529,6 +540,20 @@ gcloud infra-manager revisions describe $REVISION_ID \\
                     description="Use an existing Service Account with HMAC keys."
                   />
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between p-4 rounded-xl border bg-muted/30 shadow-sm">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm font-bold text-blue-900">Provision Storage Identity</Label>
+                    <Badge variant="secondary" className="bg-blue-100 text-blue-700 text-[10px] uppercase px-1.5 py-0">Recommended</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground italic">Create a dedicated GCP Service Account for Velero backups and Iceberg storage.</p>
+                </div>
+                <Switch
+                  checked={state.createStorageBackupSa}
+                  onCheckedChange={(checked) => updateState({ createStorageBackupSa: checked })}
+                />
               </div>
 
               {state.gcsAccountOption === "existing" && (
