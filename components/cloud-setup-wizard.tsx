@@ -68,7 +68,8 @@ interface WizardState {
   vpcId: string
   subnetIds: string
   publicSubnetIds: string
-  securityGroupIds: string
+  clusterSecurityGroupId: string
+  nodeSecurityGroupId: string
   networkCidr: string
   serviceCidr: string
   useOwnVpc: boolean
@@ -94,7 +95,8 @@ const initialState: WizardState = {
   vpcId: "",
   subnetIds: "",
   publicSubnetIds: "",
-  securityGroupIds: "",
+  clusterSecurityGroupId: "",
+  nodeSecurityGroupId: "",
   networkCidr: "10.0.0.0/16",
   serviceCidr: "172.20.0.0/16",
   useOwnVpc: true,
@@ -295,7 +297,7 @@ export function CloudSetupWizard() {
                 if (item.OutputKey === "ProjectId") updates.projectId = item.OutputValue
                 if (item.OutputKey === "Subdomain") updates.subdomain = item.OutputValue
                 if (item.OutputKey === "VpcCidrBlock") updates.networkCidr = item.OutputValue
-                if (item.OutputKey === "NodeSecurityGroupId") updates.securityGroupIds = item.OutputValue
+                if (item.OutputKey === "NodeSecurityGroupId") updates.nodeSecurityGroupId = item.OutputValue
                 if (item.OutputKey === "PrivateSubnetIds") {
                   try {
                     // Parse if it's a stringified JSON array
@@ -346,6 +348,10 @@ export function CloudSetupWizard() {
   const generateCommand = () => {
     const params: string[] = []
 
+    // Required Identity
+    params.push(`Subdomain=${state.subdomain || "<subdomain>"}`)
+    params.push(`ProjectId=${state.projectId || "<project-id>"}`)
+
     // Network parameters
     if (state.setupMode === "recommended") {
       params.push("CreateNetwork=true")
@@ -353,11 +359,13 @@ export function CloudSetupWizard() {
       // Advanced mode
       if (state.useOwnVpc) {
         params.push("CreateNetwork=false")
+        // Note: aws-setup.yaml logic for existing VPC might need VpcId parameter addition if supported
       } else {
         params.push("CreateNetwork=true")
-        if (state.networkCidr && state.networkCidr !== "10.0.0.0/16") {
-          params.push(`VpcCidr=${state.networkCidr}`)
-        }
+      }
+      
+      if (state.networkCidr) {
+        params.push(`VpcCidr=${state.networkCidr}`)
       }
     }
 
@@ -366,8 +374,8 @@ export function CloudSetupWizard() {
     params.push(`AvailabilityZone2=${state.az2 || (state.region + "b")}`)
 
     // Storage parameters
-    if (state.createS3User) {
-      params.push(`S3BucketName=${state.s3BucketName || "<bucket-name>"}`)
+    if (state.s3BucketName) {
+      params.push(`S3BucketName=${state.s3BucketName}`)
     }
 
     return `aws cloudformation deploy \\
@@ -491,29 +499,41 @@ export function CloudSetupWizard() {
                     </div>
 
                     {state.useOwnVpc && (
-                      /* Existing VPC Fields */
                       <div className="space-y-6 animate-in slide-in-from-top-4 duration-300">
+                        {/* VPC ID */}
+                        <div className="space-y-2">
+                          <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">VPC ID</Label>
+                          <Input
+                            placeholder="vpc-xxxxxxxxx"
+                            value={state.vpcId}
+                            onChange={(e) => updateState({ vpcId: e.target.value })}
+                            className="h-12 rounded-xl"
+                          />
+                        </div>
+
+                        {/* Security Groups */}
                         <div className="grid sm:grid-cols-2 gap-6">
                           <div className="space-y-2">
-                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">VPC ID</Label>
+                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Cluster Security Group ID</Label>
                             <Input
-                              placeholder="vpc-xxxxxxxxx"
-                              value={state.vpcId}
-                              onChange={(e) => updateState({ vpcId: e.target.value })}
+                              placeholder="sg-xxxxxxxxx"
+                              value={state.clusterSecurityGroupId}
+                              onChange={(e) => updateState({ clusterSecurityGroupId: e.target.value })}
                               className="h-12 rounded-xl"
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Security Group ID</Label>
+                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Node Security Group ID</Label>
                             <Input
-                              placeholder="sg-xxxxxxxxx"
-                              value={state.securityGroupIds}
-                              onChange={(e) => updateState({ securityGroupIds: e.target.value })}
+                              placeholder="sg-yyyyyyyyy"
+                              value={state.nodeSecurityGroupId}
+                              onChange={(e) => updateState({ nodeSecurityGroupId: e.target.value })}
                               className="h-12 rounded-xl"
                             />
                           </div>
                         </div>
 
+                        {/* Subnets */}
                         <div className="grid sm:grid-cols-2 gap-6">
                           <div className="space-y-2">
                             <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Private Subnet IDs</Label>
@@ -543,21 +563,19 @@ export function CloudSetupWizard() {
                         <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">VPC CIDR</Label>
                         <Input
                           placeholder="10.0.0.0/16"
-                          value={state.networkCidr || "10.0.0.0/16"}
+                          value={state.networkCidr}
                           onChange={(e) => updateState({ networkCidr: e.target.value })}
                           className="h-12 rounded-xl"
                         />
-                        <p className="text-[10px] text-muted-foreground italic">The IP range of the {state.useOwnVpc ? "existing" : "new"} VPC</p>
                       </div>
                       <div className="space-y-2">
                         <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">EKS Service CIDR</Label>
                         <Input
                           placeholder="172.20.0.0/16"
-                          value={state.serviceCidr || "172.20.0.0/16"}
+                          value={state.serviceCidr}
                           onChange={(e) => updateState({ serviceCidr: e.target.value })}
                           className="h-12 rounded-xl"
                         />
-                        <p className="text-[10px] text-muted-foreground italic">The internal range for Kubernetes services</p>
                       </div>
                     </div>
                   </div>
@@ -589,87 +607,6 @@ export function CloudSetupWizard() {
                     className="h-12 rounded-xl"
                   />
                 </div>
-
-                {state.setupMode === "advanced" && (
-                  <>
-                    <div className="flex items-center justify-between p-4 rounded-xl border bg-muted/30">
-                      <div className="space-y-0.5">
-                        <Label className="text-sm font-semibold">Create S3 User</Label>
-                        <p className="text-xs text-muted-foreground">Automatically create an IAM user for backups and data lake access.</p>
-                      </div>
-                      <Switch
-                        checked={state.createS3User}
-                        onCheckedChange={(checked) => updateState({ createS3User: checked })}
-                      />
-                    </div>
-
-                    {!state.createS3User && (
-                      <div className="space-y-6 pt-4 animate-in slide-in-from-top-4 duration-300">
-                        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 space-y-3">
-                          <div className="flex gap-3">
-                            <Shield className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                            <div className="space-y-1">
-                              <p className="text-sm font-semibold text-amber-900">Permission Requirement</p>
-                              <p className="text-xs text-amber-800 leading-relaxed">
-                                Ensure your IAM user has the following policy attached to access the bucket <span className="font-mono font-bold">"{state.s3BucketName || "selected bucket"}"</span>:
-                              </p>
-                            </div>
-                          </div>
-
-                          <pre className="p-3 bg-white/50 border border-amber-200 rounded-lg text-[10px] font-mono text-amber-900 overflow-x-auto leading-tight">
-                            {`{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["pricing:GetProducts"],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject", "s3:DeleteObject", "s3:PutObject",
-        "s3:PutObjectTagging", "s3:AbortMultipartUpload",
-        "s3:ListMultipartUploadParts"
-      ],
-      "Resource": "arn:aws:s3:::${state.s3BucketName || "<bucket-name>"}/*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["s3:ListBucket"],
-      "Resource": "arn:aws:s3:::${state.s3BucketName || "<bucket-name>"}"
-    }
-  ]
-}`}
-                          </pre>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                          <div className="space-y-2">
-                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Access Key ID</Label>
-                            <Input
-                              placeholder="AKIA..."
-                              value={state.accessKeyId}
-                              onChange={(e) => updateState({ accessKeyId: e.target.value })}
-                              className="h-12 rounded-xl font-mono text-sm"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Secret Access Key</Label>
-                            <Input
-                              type="password"
-                              placeholder="••••••••••••••••"
-                              value={state.secretAccessKey}
-                              onChange={(e) => updateState({ secretAccessKey: e.target.value })}
-                              className="h-12 rounded-xl"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-
               </div>
             </div>
           </div>
@@ -677,7 +614,7 @@ export function CloudSetupWizard() {
 
       case 5:
         return (
-          <div className="space-y-8">
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="text-center">
               <div className="inline-flex p-3 rounded-full bg-emerald-100 mb-4">
                 <CheckCircle2 className="w-8 h-8 text-emerald-600" />
@@ -686,9 +623,59 @@ export function CloudSetupWizard() {
               <p className="mt-2 text-muted-foreground">Follow these steps to complete your setup</p>
             </div>
 
+            <div className="max-w-3xl mx-auto">
+              <Card className="bg-muted/30 border-none shadow-none mb-8 overflow-hidden">
+                <CardContent className="p-0">
+                  <div className="bg-emerald-50 px-6 py-4 border-b border-emerald-100 flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-emerald-500 text-white">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-emerald-900 leading-tight">What will be created?</h3>
+                      <p className="text-xs text-emerald-700/70">A summary of the resources being provisioned</p>
+                    </div>
+                  </div>
+                  <div className="p-6 grid sm:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <div className="flex gap-3">
+                        <div className="mt-1 w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                        <div>
+                          <p className="text-sm font-semibold">Security & Access</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            A dedicated encryption key (KMS) and identity roles will be created. Managed keys typically incur a small monthly fee and usage costs.
+                          </p>
+                        </div>
+                      </div>
+                      {state.s3BucketName && (
+                        <div className="flex gap-3">
+                          <div className="mt-1 w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                          <div>
+                            <p className="text-sm font-semibold">Storage Connection</p>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                              Secure access keys to connect your <span className="font-mono">{state.s3BucketName}</span> bucket to the cluster.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-4">
+                      {!state.useOwnVpc && (
+                        <div className="flex gap-3">
+                          <div className="mt-1 w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                          <div>
+                            <p className="text-sm font-semibold">Private Network</p>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                              A new, isolated virtual network (VPC) with a NAT Gateway and Internet Gateway. These resources provide secure connectivity and may incur standard cloud provider costs.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-            <div className="max-w-3xl mx-auto space-y-8">
-              <h3 className="font-semibold text-foreground text-lg">Follow these steps</h3>
+              <h3 className="font-semibold text-foreground text-lg mb-6">Follow these steps</h3>
 
               <div className="space-y-6">
                 {/* Step 1: Download */}
@@ -699,11 +686,11 @@ export function CloudSetupWizard() {
                   <div className="flex-1 space-y-3">
                     <p className="text-sm font-medium">Download the setup file</p>
                     <p className="text-sm text-muted-foreground">
-                      Save this file as <code className="px-1.5 py-0.5 bg-muted rounded text-foreground font-mono text-xs">template.yaml</code> in a folder you can access from your terminal or command prompt.
+                      Save this file as <code className="px-1.5 py-0.5 bg-muted rounded text-foreground font-mono text-xs">aws-setup.yaml</code> in a folder you can access from your terminal.
                     </p>
                     <Button variant="outline" className="gap-2">
                       <Download className="w-4 h-4" />
-                      Download template.yaml
+                      Download aws-setup.yaml
                     </Button>
                   </div>
                 </div>
@@ -718,10 +705,7 @@ export function CloudSetupWizard() {
                     <p className="text-sm text-muted-foreground">
                       Open your terminal, navigate to the folder where you saved the file, and run this command:
                     </p>
-                    <CommandBlock command={generateCommand()} onCopy={() => { }} />
-                    <p className="text-xs text-muted-foreground">
-                      This may take a few minutes to complete. Wait until you see a success message.
-                    </p>
+                    <CommandBlock command={generateCommand()} onCopy={() => {}} />
                   </div>
                 </div>
 
@@ -747,10 +731,10 @@ export function CloudSetupWizard() {
                   <div className="flex-1 space-y-3">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium">Upload the results file</p>
-                      <HelperTooltip text="File must be a JSON array of objects with 'OutputKey' and 'OutputValue' fields. Example: [ { 'OutputKey': 'VpcId', 'OutputValue': 'vpc-...' }, ... ]" />
+                      <HelperTooltip text="File must be a JSON array of objects with 'OutputKey' and 'OutputValue' fields." />
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Upload the <code className="px-1.5 py-0.5 bg-muted rounded text-foreground font-mono text-xs">outputs.json</code> file:
+                      Upload the <code className="px-1.5 py-0.5 bg-muted rounded text-foreground font-mono text-xs">outputs.json</code> file to verify:
                     </p>
                     <label
                       htmlFor="file-upload"
@@ -766,71 +750,57 @@ export function CloudSetupWizard() {
                       ) : state.outputsUploaded ? (
                         <div className="text-center">
                           <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                          <p className="text-sm font-medium text-emerald-600">
-                            Environment Verified Successfully
-                          </p>
+                          <p className="text-sm font-medium text-emerald-600">Verification Complete</p>
                         </div>
                       ) : (
-                        <div className="text-center">
-                          <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                          <p className="text-sm text-muted-foreground">
-                            <span className="font-semibold text-foreground">
-                              Click to upload
-                            </span>{" "}
-                            or drag and drop
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">outputs.json</p>
+                        <div className="text-center text-muted-foreground">
+                          <Upload className="w-8 h-8 mx-auto mb-2" />
+                          <p className="text-sm font-medium text-foreground">Click to upload outputs.json</p>
                         </div>
                       )}
-                      <input
-                        id="file-upload"
-                        type="file"
-                        accept=".json"
-                        className="hidden"
-                        onChange={handleFileUpload}
-                        disabled={isUploading || state.outputsUploaded}
-                      />
+                      <input id="file-upload" type="file" accept=".json" className="hidden" onChange={handleFileUpload} disabled={isUploading || state.outputsUploaded} />
                     </label>
                   </div>
                 </div>
 
-                {/* Step 5: S3 Credentials */}
-                {state.createS3User && (
-                  <div className="flex items-start gap-4">
+                {/* Step 5: Access Keys (Conditional) */}
+                {state.s3BucketName && (
+                  <div className="flex items-start gap-4 pt-6 border-t border-dashed">
                     <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 font-semibold text-sm shrink-0">
                       5
                     </div>
-                    <div className="flex-1 space-y-4 min-w-0">
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">Create S3 Access Keys</p>
-                        <p className="text-sm text-muted-foreground">
-                          Run this command to generate programmatic access keys for the backup user:
+                    <div className="flex-1 space-y-4">
+                      <div>
+                        <p className="text-sm font-medium">Generate and save access keys</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Since you are using storage backups, you need to generate access keys for the new IAM user. Run this command in your terminal:
                         </p>
                       </div>
-
                       <CommandBlock command={createAccessKeyCommand} onCopy={() => { }} />
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 w-full">
+                      <div className="grid sm:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-xl border border-border/50">
                         <div className="space-y-2">
                           <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Access Key ID</Label>
                           <Input
                             placeholder="AKIA..."
                             value={state.accessKeyId}
                             onChange={(e) => updateState({ accessKeyId: e.target.value })}
-                            className="h-10 rounded-lg font-mono text-xs"
+                            className="h-10 bg-background"
                           />
                         </div>
                         <div className="space-y-2">
                           <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Secret Access Key</Label>
                           <Input
                             type="password"
-                            placeholder="••••••••••••••••"
+                            placeholder="••••••••••••"
                             value={state.secretAccessKey}
                             onChange={(e) => updateState({ secretAccessKey: e.target.value })}
-                            className="h-10 rounded-lg"
+                            className="h-10 bg-background"
                           />
                         </div>
                       </div>
+                      <p className="text-[10px] text-muted-foreground italic flex items-center gap-1.5">
+                        <Shield className="w-3 h-3" /> These keys are required to connect your cluster to S3.
+                      </p>
                     </div>
                   </div>
                 )}
@@ -841,45 +811,22 @@ export function CloudSetupWizard() {
 
       case 9:
         return (
-          <div className="space-y-8 text-center">
+          <div className="space-y-8 text-center animate-in zoom-in-95 duration-500">
             <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-xl shadow-emerald-500/20">
               <CheckCircle2 className="w-12 h-12 text-white" />
             </div>
 
             <div>
-              <h2 className="text-3xl font-bold text-foreground">
-                🎉 Your cloud is ready!
-              </h2>
-              <p className="mt-3 text-lg text-muted-foreground">
-                Everything has been configured successfully
-              </p>
+              <h2 className="text-3xl font-bold text-foreground">🎉 Your cloud is ready!</h2>
+              <p className="mt-3 text-lg text-muted-foreground">Everything has been configured successfully</p>
             </div>
-
-            <Card className="max-w-md mx-auto">
-              <CardContent className="p-6">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                    <span className="text-sm">Environment created</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                    <span className="text-sm">Permissions configured</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                    <span className="text-sm">Storage connected</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
 
             <Button
               size="lg"
-              className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 h-14 px-8 rounded-2xl shadow-xl shadow-emerald-500/20"
               onClick={() => {
                 localStorage.setItem("cloudSetupState", JSON.stringify(state))
-                router.push("/cluster-setup")
+                router.push("/aws/cluster-setup")
               }}
             >
               Continue to Cluster Setup
@@ -895,125 +842,137 @@ export function CloudSetupWizard() {
 
   const canGoNext = () => {
     switch (currentStep) {
+      case 0:
+        return true
       case 2:
-        // Network step
         if (state.setupMode === "recommended") return !!state.region
-        
-        // Advanced mode
         if (state.useOwnVpc) {
           return !!(
             state.region &&
             state.vpcId &&
             state.subnetIds &&
             state.publicSubnetIds &&
-            state.securityGroupIds
+            state.clusterSecurityGroupId &&
+            state.nodeSecurityGroupId
           )
         }
-        
-        // Advanced Custom Network mode - very permissive for now
-        return !!(state.region && state.networkCidr && state.serviceCidr)
+        return !!(state.region && state.networkCidr)
       case 3:
-        // Storage step - bucket name required, and if not creating user, keys are required
-        const bucketOk = state.s3BucketName.trim() !== ""
-        if (!state.createS3User) {
-          return bucketOk && state.accessKeyId.trim() !== "" && state.secretAccessKey.trim() !== ""
-        }
-        return bucketOk
+        return state.s3BucketName.trim() !== ""
       case 5:
-        // Review step - outputs uploaded AND s3 credentials provided
-        return (
-          state.outputsUploaded &&
-          state.accessKeyId.trim() !== "" &&
-          state.secretAccessKey.trim() !== ""
-        )
+        const baseRequirement = state.outputsUploaded
+        if (state.s3BucketName) {
+          return baseRequirement && !!state.accessKeyId && !!state.secretAccessKey
+        }
+        return baseRequirement
       default:
         return true
     }
   }
 
   const currentStepIndex = getCurrentStepIndex()
-
   return (
     <div className="min-h-screen bg-background">
-      {/* Progress Bar */}
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-lg border-b">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-muted-foreground">
-              Step {currentStepIndex + 1} of {visibleSteps.length}
-            </span>
-            <span className="text-sm font-medium text-foreground">
-              {visibleSteps[currentStepIndex]?.title}
-            </span>
-          </div>
-          <div className="h-2 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500 ease-out"
-              style={{
-                width: `${((currentStepIndex + 1) / visibleSteps.length) * 100}%`,
-              }}
-            />
-          </div>
-          <div className="flex justify-between mt-2">
-            {visibleSteps.map((step, index) => {
-              const Icon = step.icon
-              const isActive = index === currentStepIndex
-              const isComplete = index < currentStepIndex
+      <div className="max-w-6xl mx-auto px-4 py-12">
+        <div className="flex flex-col md:flex-row gap-12">
+          {/* Vertical Sidebar */}
+          <aside className="w-full md:w-64 shrink-0">
+            <div className="sticky top-24 space-y-8">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground mb-6">
+                  Wizard Progress
+                </h3>
+                <nav className="space-y-0">
+                  {STEPS.map((step, index) => {
+                    const Icon = step.icon
+                    const isActive = index === currentStepIndex
+                    const isComplete = index < currentStepIndex
+                    return (
+                      <div key={step.id} className="flex gap-4">
+                        <div className="flex flex-col items-center">
+                          <button
+                            onClick={() => isComplete && setCurrentStep(step.id)}
+                            disabled={!isComplete}
+                            className={cn(
+                              "w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all relative z-10",
+                              isActive
+                                ? "bg-white border-emerald-500 text-emerald-600 shadow-lg shadow-emerald-500/20"
+                                : isComplete
+                                ? "bg-emerald-500 border-emerald-500 text-white"
+                                : "bg-muted border-transparent text-muted-foreground/30"
+                            )}
+                          >
+                            {isComplete ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+                          </button>
+                          {index < STEPS.length - 1 && (
+                            <div className={cn("w-0.5 h-10 -my-1 rounded relative z-0", isComplete ? "bg-emerald-500" : "bg-muted")} />
+                          )}
+                        </div>
+                        <div className="pt-1.5 flex-1">
+                          <div className={cn("text-sm font-bold transition-colors", isActive ? "text-emerald-600" : isComplete ? "text-foreground" : "text-muted-foreground/30")}>
+                            {step.title}
+                          </div>
+                          {isActive && (
+                            <div className="text-[10px] text-emerald-500/70 font-medium uppercase tracking-wider animate-in fade-in slide-in-from-left-1">
+                              In Progress
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </nav>
+              </div>
+              
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 space-y-3">
+                <div className="flex items-center gap-2 text-emerald-700">
+                  <Shield className="w-4 h-4" />
+                  <span className="text-[10px] font-black uppercase tracking-wider">Secure Setup</span>
+                </div>
+                <p className="text-[10px] text-emerald-600 leading-relaxed">
+                  Your configuration is encrypted and stored locally in your browser.
+                </p>
+              </div>
+            </div>
+          </aside>
 
-              return (
-                <button
-                  key={step.id}
-                  onClick={() => index < currentStepIndex && setCurrentStep(step.id)}
-                  disabled={index > currentStepIndex}
-                  className={cn(
-                    "flex items-center gap-1.5 text-xs font-medium transition-colors",
-                    isActive
-                      ? "text-emerald-600"
-                      : isComplete
-                        ? "text-foreground hover:text-emerald-600 cursor-pointer"
-                        : "text-muted-foreground/50 cursor-not-allowed"
-                  )}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{step.title}</span>
-                </button>
-              )
-            })}
-          </div>
+          {/* Content Area */}
+          <main className="flex-1 min-w-0 pb-32">
+            <div className="animate-in fade-in-0 slide-in-from-bottom-4 duration-500">
+              {renderStepContent()}
+            </div>
+          </main>
         </div>
       </div>
 
-      {/* Content */}
-      <main className="max-w-4xl mx-auto px-4 pt-12 pb-32">
-        <div className="animate-in fade-in-0 slide-in-from-bottom-4 duration-500">
-          {renderStepContent()}
-        </div>
-      </main>
-
       {/* Navigation */}
       {currentStep !== 9 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t">
-          <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-            <Button
-              variant="outline"
-              onClick={goBack}
-              disabled={currentStepIndex === 0}
-              className="gap-2"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              Back
-            </Button>
-            <Button
-              onClick={goNext}
-              disabled={!canGoNext()}
-              className="gap-2 bg-emerald-600 hover:bg-emerald-700"
-            >
-              Continue
-              <ChevronRight className="w-4 h-4" />
-            </Button>
+        <div className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t z-50">
+          <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="hidden md:block w-64" /> {/* Spacer to align with content */}
+            <div className="flex-1 flex items-center justify-between md:pl-12">
+              <Button
+                variant="outline"
+                onClick={goBack}
+                disabled={currentStepIndex === 0}
+                className="gap-2 h-12 px-6 font-bold"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Back
+              </Button>
+              <Button
+                onClick={goNext}
+                disabled={!canGoNext()}
+                className="gap-2 h-12 px-8 bg-emerald-600 hover:bg-emerald-700 font-bold"
+              >
+                Continue
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         </div>
       )}
     </div>
   )
 }
+

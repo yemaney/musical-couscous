@@ -88,6 +88,13 @@ interface ClusterState {
   s3BucketName: string
   // Advanced
   serviceCidr: string
+  // Networking Extended
+  natGatewayId: string
+  internetGatewayId: string
+  publicRouteTableId: string
+  privateRouteTableId: string
+  s3VpcEndpointId: string
+  s3BackupUserName: string
   // Provisioned Outputs
   provisioningOutputs?: Record<string, string>
 }
@@ -195,6 +202,12 @@ export function ClusterSetupWizard() {
     clusterSecurityGroupId: "",
     serviceCidr: "172.20.0.0/16",
     s3BucketName: "",
+    natGatewayId: "",
+    internetGatewayId: "",
+    publicRouteTableId: "",
+    privateRouteTableId: "",
+    s3VpcEndpointId: "",
+    s3BackupUserName: "",
   })
 
   // Load data from previous step
@@ -247,6 +260,12 @@ export function ClusterSetupWizard() {
           veleroRoleArn: outputs.VeleroServerRoleArn || prev.veleroRoleArn,
           subdomain: outputs.Subdomain || prev.subdomain,
           projectId: outputs.ProjectId || prev.projectId,
+          natGatewayId: outputs.NatGatewayId || prev.natGatewayId,
+          internetGatewayId: outputs.InternetGatewayId || prev.internetGatewayId,
+          publicRouteTableId: outputs.PublicRouteTableId || prev.publicRouteTableId,
+          privateRouteTableId: outputs.PrivateRouteTableId || prev.privateRouteTableId,
+          s3VpcEndpointId: outputs.S3VPCEndpointId || prev.s3VpcEndpointId,
+          s3BackupUserName: outputs.S3BackupUserName || prev.s3BackupUserName,
           provisioningOutputs: outputs,
         }))
       } catch (e) {
@@ -310,35 +329,46 @@ export function ClusterSetupWizard() {
           </div>
         </div>
 
-        {/* Basic Setup - Always visible */}
+        {/* System Summary */}
         <div className="space-y-6 mb-6">
-          <Card>
+          <Card className="border-emerald-100 shadow-sm bg-emerald-50/10">
             <CardContent className="p-6">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2 rounded-lg bg-emerald-100">
-                  <Globe className="w-5 h-5 text-emerald-600" />
+                  <Settings className="w-5 h-5 text-emerald-600" />
                 </div>
-                <h2 className="font-semibold text-lg text-foreground">System Identity</h2>
+                <h2 className="font-semibold text-lg text-foreground">System Summary</h2>
               </div>
 
-              <div className="space-y-6">
+              <div className="grid gap-4">
                 {/* Cluster Name */}
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="clusterName">System Name</Label>
-                    <HelperTooltip text="A unique ID for your system. This is automatically assigned." />
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">System Identity</Label>
+                  <div className="flex items-center gap-3">
+                     <code className="px-3 py-1.5 bg-white rounded-lg text-sm font-mono border border-emerald-200 text-emerald-900">
+                        {state.clusterName}
+                     </code>
+                     <ValidationBadge valid={true} label="Identified" />
                   </div>
-                  <div className="flex gap-2">
-                    <Input
-                      id="clusterName"
-                      value={state.clusterName}
-                      readOnly
-                      className="bg-muted/50 cursor-not-allowed font-mono"
-                    />
+                </div>
+
+                <div className="grid grid-cols-2 gap-y-4 gap-x-8 pt-4 border-t border-emerald-100/50">
+                  <div className="space-y-1">
+                    <ValidationBadge valid={validations.region} label="Location Ready" />
+                    <p className="text-[10px] text-muted-foreground ml-6">Region: {state.region || "us-east-1"}</p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    This unique identifier is automatically assigned to your project.
-                  </p>
+                  <div className="space-y-1">
+                    <ValidationBadge valid={!!state.vpcId} label="Network Ready" />
+                    <p className="text-[10px] text-muted-foreground ml-6">Private & Secure</p>
+                  </div>
+                  <div className="space-y-1">
+                    <ValidationBadge valid={validations.permissions} label="Access Ready" />
+                    <p className="text-[10px] text-muted-foreground ml-6">IAM Roles Verified</p>
+                  </div>
+                  <div className="space-y-1">
+                    <ValidationBadge valid={validations.encryption} label="Data Protected" />
+                    <p className="text-[10px] text-muted-foreground ml-6">KMS Encrypted</p>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -349,7 +379,7 @@ export function ClusterSetupWizard() {
         <div className="space-y-4 mb-8">
           {/* Network Foundation Section */}
           <SectionCard
-            title="Your Private Network"
+            title="Network"
             icon={Network}
             badge="Read-only · Auto-filled"
             defaultOpen={true}
@@ -382,8 +412,8 @@ export function ClusterSetupWizard() {
                 </div>
 
                 <div className="space-y-1">
-                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Network ID</Label>
-                    <p className="text-[10px] text-muted-foreground -mt-0.5">Your private network's unique identifier</p>
+                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">VPC (Virtual Private Cloud)</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-0.5">The main isolated container for all your cloud resources.</p>
                     <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
                       {state.vpcId || "Pending..."}
                     </code>
@@ -391,7 +421,8 @@ export function ClusterSetupWizard() {
 
                 <div className="grid grid-cols-2 gap-4">
                    <div className="space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Network Range</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">VPC CIDR Block</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-0.5">The range of internal addresses for your network.</p>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
                         {state.vpcCidr || "Pending..."}
                       </code>
@@ -412,16 +443,16 @@ export function ClusterSetupWizard() {
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Private Connection Points</Label>
-                  <p className="text-[10px] text-muted-foreground -mt-0.5">Internal access points for your system's servers</p>
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Private Subnets</Label>
+                  <p className="text-[10px] text-muted-foreground -mt-0.5">Secure sections of your network where your servers run.</p>
                   <code className="block p-2 bg-muted rounded text-[10px] font-mono border break-all">
                     {state.subnetIds || "Pending..."}
                   </code>
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Public Connection Points</Label>
-                  <p className="text-[10px] text-muted-foreground -mt-0.5">External access points for internet-facing services</p>
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Public Subnets</Label>
+                  <p className="text-[10px] text-muted-foreground -mt-0.5">Sections of your network that can talk to the internet.</p>
                   <code className="block p-2 bg-muted rounded text-[10px] font-mono border break-all">
                     {state.publicSubnetIds || "Pending..."}
                   </code>
@@ -429,19 +460,61 @@ export function ClusterSetupWizard() {
 
                 <div className="grid grid-cols-2 gap-4">
                    <div className="space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Server Firewall</Label>
-                      <p className="text-[10px] text-muted-foreground -mt-0.5">Controls network access to your servers</p>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Node Security Group</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-0.5">A virtual firewall that protects your individual servers.</p>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
                         {state.securityGroupIds || "Pending..."}
                       </code>
                    </div>
                    <div className="space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">System Firewall</Label>
-                      <p className="text-[10px] text-muted-foreground -mt-0.5">Controls network access to your system</p>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Cluster Security Group</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-0.5">A virtual firewall that protects the central system brain.</p>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
                         {state.clusterSecurityGroupId || "Pending..."}
                       </code>
                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                   <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">NAT Gateway</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-0.5">Allows your secure servers to download updates safely.</p>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                        {state.natGatewayId || "Pending..."}
+                      </code>
+                   </div>
+                   <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Internet Gateway</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-0.5">The main door for internet traffic to your public services.</p>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                        {state.internetGatewayId || "Pending..."}
+                      </code>
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                   <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Public Route Table</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-0.5">Rules that direct traffic for your public services.</p>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                        {state.publicRouteTableId || "Pending..."}
+                      </code>
+                   </div>
+                   <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Private Route Table</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-0.5">Rules that direct traffic for your secure servers.</p>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                        {state.privateRouteTableId || "Pending..."}
+                      </code>
+                   </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">S3 VPC Endpoint</Label>
+                  <p className="text-[10px] text-muted-foreground -mt-0.5">A private tunnel for secure, fast access to your storage.</p>
+                  <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                    {state.s3VpcEndpointId || "Pending..."}
+                  </code>
                 </div>
               </div>
             </div>
@@ -459,15 +532,13 @@ export function ClusterSetupWizard() {
                 These permissions were automatically set up to keep your system secure. No action needed.
               </p>
 
-                <div className="space-y-6">
+                 <div className="space-y-6">
                   {/* Deployment Role */}
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-semibold">Deployment Permission</Label>
-                      <HelperTooltip text="Allows the system to automatically provision your infrastructure on your behalf." />
-                    </div>
+                    <Label className="text-sm font-semibold">Cloud Orchestrator IAM Role</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-1.5">The primary permission used to automate the creation and management of your cloud resources.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Orchestrator Role ARN</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.orchestratorRoleArn || "Pending outputs..."}
                       </code>
@@ -476,12 +547,10 @@ export function ClusterSetupWizard() {
 
                   {/* Worker Node Role */}
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-semibold">Server Permission</Label>
-                      <HelperTooltip text="Allows your compute servers to operate securely within your account." />
-                    </div>
+                    <Label className="text-sm font-semibold">Server Operation IAM Role</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-1.5">Permissions that allow your compute servers to run applications and securely access cloud services.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Node Group Role ARN</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.nodeGroupRoleArn || "Pending outputs..."}
                       </code>
@@ -490,12 +559,10 @@ export function ClusterSetupWizard() {
 
                   {/* System Management Role */}
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-semibold">System Management</Label>
-                      <HelperTooltip text="Allows the system's control center to manage your servers and networking." />
-                    </div>
+                    <Label className="text-sm font-semibold">System Management IAM Role</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-1.5">The central permission used to monitor and maintain the health and security of your cluster.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Cluster Role ARN</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.clusterRoleArn || "Pending outputs..."}
                       </code>
@@ -504,12 +571,10 @@ export function ClusterSetupWizard() {
 
                   {/* Karpenter Role */}
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-semibold">Auto-Scaling Permission</Label>
-                      <HelperTooltip text="Allows the Karpenter controller to provision and manage worker nodes dynamically." />
-                    </div>
+                    <Label className="text-sm font-semibold">Auto-Scaling IAM Role</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-1.5">Allows the system to automatically adjust the number of servers based on your current workload.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Karpenter Controller Role ARN</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.karpenterRoleArn || "Pending outputs..."}
                       </code>
@@ -518,12 +583,10 @@ export function ClusterSetupWizard() {
 
                   {/* Velero Role */}
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-semibold">Backup & Recovery</Label>
-                      <HelperTooltip text="Used by Velero to manage cluster backups and snapshots securely." />
-                    </div>
+                    <Label className="text-sm font-semibold">Backup & Recovery IAM Role</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-1.5">Permissions used to safely create backups of your data and restore them during recovery.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Velero Server Role ARN</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.veleroRoleArn || "Pending outputs..."}
                       </code>
@@ -534,13 +597,28 @@ export function ClusterSetupWizard() {
                   <div className="space-y-2 pt-4 border-t border-dashed">
                     <div className="flex items-center gap-2 text-emerald-600">
                       <Lock className="w-4 h-4" />
-                      <Label className="text-sm font-bold">Data Encryption Key</Label>
-                      <HelperTooltip text="Used to encrypt your system secrets and configuration data at rest." />
+                      <Label className="text-sm font-bold">Encryption Management Key (KMS)</Label>
                     </div>
+                    <p className="text-[10px] text-muted-foreground ml-6 -mt-1">A master key used to encrypt and protect your system secrets and sensitive data at rest.</p>
                     <div className="ml-6 space-y-1">
                       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">KMS Key ARN</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.kmsKeyArn || "Pending outputs..."}
+                      </code>
+                    </div>
+                  </div>
+
+                  {/* S3 User */}
+                  <div className="space-y-2 pt-4 border-t border-dashed">
+                    <div className="flex items-center gap-2 text-blue-600">
+                      <Database className="w-4 h-4" />
+                      <Label className="text-sm font-bold">Storage Access User</Label>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground ml-6 -mt-1">A dedicated secure identity used to manage your datalake tables (Iceberg) and store system logs.</p>
+                    <div className="ml-6 space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">User Name</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
+                        {state.s3BackupUserName || "Pending outputs..."}
                       </code>
                     </div>
                   </div>
@@ -556,18 +634,9 @@ export function ClusterSetupWizard() {
             defaultOpen={true}
           >
             <div className="space-y-4 pt-4">
-              <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg flex gap-3">
-                <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                <p className="text-xs text-blue-700">
-                  This bucket is used as the primary storage for system backups and your internal datalake.
-                </p>
-              </div>
-
               <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label className="text-sm font-semibold">Primary Data Bucket</Label>
-                  <HelperTooltip text="The S3 bucket where your system backups and data files are stored." />
-                </div>
+                <Label className="text-sm font-semibold">Primary Data Bucket</Label>
+                <p className="text-[10px] text-muted-foreground -mt-1.5">The bucket will be used to store datalake (Iceberg), logs, and backups.</p>
                 <div className="ml-6 space-y-1">
                   <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">S3 Bucket Name</Label>
                   <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
@@ -580,16 +649,6 @@ export function ClusterSetupWizard() {
 
         </div>
 
-        {/* Validation Summary */}
-        <Card className="mb-8">
-          <CardContent className="p-4">
-            <div className="flex flex-wrap gap-4">
-              <ValidationBadge valid={validations.region} label="Your location is set" />
-              <ValidationBadge valid={validations.permissions} label="Your permissions are ready" />
-              <ValidationBadge valid={validations.encryption} label="Your data is encrypted" />
-            </div>
-          </CardContent>
-        </Card>
 
 
         {/* Navigation */}
@@ -597,7 +656,7 @@ export function ClusterSetupWizard() {
           <div className="max-w-2xl mx-auto px-4 h-full flex items-center justify-between">
             <Button 
               variant="outline" 
-              onClick={() => router.push("/cloud-setup")}
+              onClick={() => router.push("/aws/cloud-setup")}
               className="gap-2"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -607,7 +666,7 @@ export function ClusterSetupWizard() {
               size="lg"
               disabled={!allValid}
               className="gap-2 bg-emerald-600 hover:bg-emerald-700 h-10 px-8"
-              onClick={() => router.push("/compute-strategy")}
+              onClick={() => router.push("/aws/compute-strategy")}
             >
               Continue to System Power
               <ChevronRight className="w-4 h-4" />

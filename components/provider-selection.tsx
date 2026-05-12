@@ -42,7 +42,7 @@ export function ProviderSelection() {
       border: "border-orange-200",
       text: "text-orange-900",
       active: true,
-      path: "/cloud-setup"
+      path: "/aws/cloud-setup"
     },
     {
       id: "gcp",

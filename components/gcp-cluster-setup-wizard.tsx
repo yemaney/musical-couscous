@@ -280,7 +280,7 @@ export function GCPClusterSetupWizard() {
         <div className="space-y-4 mb-8">
           {/* Network Foundation Section */}
           <SectionCard
-            title="Your Private Network"
+            title="Network"
             icon={Network}
             badge="Read-only · Auto-filled"
             defaultOpen={true}

@@ -462,7 +462,7 @@ export function SystemScalingWizard() {
             <Button 
               className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 gap-2 px-8" 
               size="lg"
-              onClick={() => router.push("/review")}
+              onClick={() => router.push("/aws/review")}
             >
               Finish Cluster Setup
               <ChevronRight className="w-4 h-4" />

@@ -4,15 +4,26 @@ import { usePathname } from "next/navigation"
 import { CheckCircle2, Cloud, Server, Zap, Rocket } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-const STAGES = [
-  { path: "/cloud-setup",       label: "Account & Location",    icon: Cloud,        step: 1 },
-  { path: "/cluster-setup",     label: "System Configuration",  icon: Server,       step: 2 },
-  { path: "/compute-strategy",  label: "System Power",          icon: Zap,          step: 3 },
-  { path: "/review",            label: "Launch",                icon: Rocket,       step: 4 },
+const AWS_STAGES = [
+  { path: "/aws/cloud-setup",       label: "System Setup",          icon: Cloud,        step: 1 },
+  { path: "/aws/cluster-setup",     label: "System Configuration",  icon: Server,       step: 2 },
+  { path: "/aws/compute-strategy",  label: "System Power",          icon: Zap,          step: 3 },
+  { path: "/aws/review",            label: "Launch",                icon: Rocket,       step: 4 },
+]
+
+const GCP_STAGES = [
+  { path: "/gcp/cloud-setup",       label: "System Setup",          icon: Cloud,        step: 1 },
+  { path: "/gcp/cluster-setup",     label: "System Configuration",  icon: Server,       step: 2 },
+  { path: "/gcp/compute-strategy",  label: "System Power",          icon: Zap,          step: 3 },
+  { path: "/gcp/review",            label: "Launch",                icon: Rocket,       step: 4 },
 ]
 
 export function SetupStageProgress() {
   const pathname = usePathname()
+  const isGcp = pathname?.includes("/gcp/")
+  const STAGES = isGcp ? GCP_STAGES : AWS_STAGES
+  const colorClass = isGcp ? "blue" : "emerald"
+  
   const currentIndex = STAGES.findIndex((s) => pathname?.startsWith(s.path))
   if (currentIndex === -1) return null
 
@@ -33,9 +44,9 @@ export function SetupStageProgress() {
                     className={cn(
                       "flex items-center justify-center w-8 h-8 rounded-full border-2 transition-all duration-300",
                       isDone
-                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        ? isGcp ? "bg-blue-600 border-blue-600 text-white" : "bg-emerald-500 border-emerald-500 text-white"
                         : isActive
-                        ? "bg-white border-emerald-500 text-emerald-600 shadow-md shadow-emerald-500/20"
+                        ? isGcp ? "bg-white border-blue-600 text-blue-600 shadow-md shadow-blue-600/20" : "bg-white border-emerald-500 text-emerald-600 shadow-md shadow-emerald-500/20"
                         : "bg-muted border-border text-muted-foreground"
                     )}
                   >
@@ -48,7 +59,11 @@ export function SetupStageProgress() {
                   <span
                     className={cn(
                       "text-[10px] font-semibold text-center leading-tight hidden sm:block",
-                      isActive ? "text-emerald-600" : isDone ? "text-emerald-500" : "text-muted-foreground"
+                      isActive 
+                        ? isGcp ? "text-blue-600" : "text-emerald-600" 
+                        : isDone 
+                        ? isGcp ? "text-blue-500" : "text-emerald-500" 
+                        : "text-muted-foreground"
                     )}
                   >
                     {stage.label}
@@ -61,7 +76,9 @@ export function SetupStageProgress() {
                     <div
                       className={cn(
                         "h-full rounded transition-all duration-500",
-                        isDone ? "bg-emerald-400" : "bg-border"
+                        isDone 
+                          ? isGcp ? "bg-blue-400" : "bg-emerald-400" 
+                          : "bg-border"
                       )}
                     />
                   </div>

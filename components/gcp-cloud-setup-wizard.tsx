@@ -64,12 +64,13 @@ interface WizardState {
   setupMode: SetupMode
   region: string
   zone1: string
-  zone2: string
   vpcName: string
   subnetName: string
   ipRangePods: string
   ipRangeServices: string
   networkCidr: string
+  podCidr: string
+  serviceCidr: string
   useOwnVpc: boolean
   gcsAccountOption: GCSAccountOption
   gcsBucketName: string
@@ -87,12 +88,13 @@ const initialState: WizardState = {
   setupMode: "recommended",
   region: "northamerica-northeast2",
   zone1: "northamerica-northeast2-a",
-  zone2: "northamerica-northeast2-b",
   vpcName: "",
   subnetName: "",
   ipRangePods: "",
   ipRangeServices: "",
   networkCidr: "",
+  podCidr: "10.1.0.0/16",
+  serviceCidr: "10.2.0.0/20",
   useOwnVpc: true,
   gcsAccountOption: "create",
   gcsBucketName: "",
@@ -125,9 +127,9 @@ function CommandBlock({ command, onCopy }: { command: string; onCopy?: () => voi
 
   return (
     <div className="relative group">
-      <div className="bg-slate-950 rounded-xl p-4 font-mono text-sm text-blue-300 overflow-x-auto border border-white/10 shadow-inner">
-        <code>{command}</code>
-      </div>
+      <pre className="p-4 bg-slate-900 text-slate-100 rounded-lg text-sm overflow-x-auto font-mono w-full">
+        {command}
+      </pre>
       <Button
         size="sm"
         variant="secondary"
@@ -177,40 +179,38 @@ function OptionCard({
     <button
       onClick={onClick}
       className={cn(
-        "relative w-full p-6 rounded-2xl border-2 text-left transition-all duration-200 group",
+        "relative w-full p-6 rounded-xl border-2 text-left transition-all duration-200",
+        "hover:border-blue-500/50 hover:bg-blue-50/50",
         selected
-          ? "border-blue-500 bg-blue-50 shadow-md shadow-blue-500/5"
-          : "border-border bg-card hover:border-blue-500/30 hover:bg-blue-50/30"
+          ? "border-blue-500 bg-blue-50 shadow-lg shadow-blue-500/10"
+          : "border-border bg-card"
       )}
     >
       {recommended && (
-        <span className="absolute -top-3 left-6 px-3 py-1 text-[10px] font-bold bg-blue-500 text-white rounded-full uppercase tracking-wider shadow-sm">
+        <span className="absolute -top-3 left-4 px-3 py-1 text-xs font-medium bg-blue-500 text-white rounded-full">
           Recommended
         </span>
       )}
-      <div className="flex gap-5">
+      <div className="flex items-start gap-4">
         <div
           className={cn(
-            "p-3 rounded-xl transition-colors",
-            selected ? "bg-blue-500 text-white shadow-lg shadow-blue-500/20" : "bg-muted text-muted-foreground group-hover:text-blue-600"
+            "p-3 rounded-lg",
+            selected ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"
           )}
         >
-          <Icon className="w-6 h-6" />
+          <Icon className="w-5 h-5" />
         </div>
-        <div className="flex-1 min-w-0">
-          <h4 className={cn("text-lg font-bold", selected ? "text-blue-900" : "text-foreground")}>
-            {title}
-          </h4>
-          <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">
-            {description}
-          </p>
+        <div className="flex-1">
+          <h3 className="font-semibold text-foreground">{title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         </div>
-        <div className="shrink-0">
-          {selected ? (
-            <CheckCircle2 className="w-6 h-6 text-blue-500" />
-          ) : (
-            <Circle className="w-6 h-6 text-muted-foreground/30" />
+        <div
+          className={cn(
+            "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+            selected ? "border-blue-500 bg-blue-500" : "border-muted-foreground/30"
           )}
+        >
+          {selected && <CheckCircle2 className="w-3 h-3 text-white" />}
         </div>
       </div>
     </button>
@@ -281,37 +281,38 @@ export function GCPCloudSetupWizard() {
 
   const generateCommand = () => {
     const vars: string[] = []
-    vars.push(`create_network=${state.createNetwork}`)
-    vars.push(`create_storage_backup_sa=${state.createStorageBackupSa}`)
 
-    if (!state.createNetwork) {
-        vars.push(`existing_network_name=${state.vpcName || "<vpc-name>"}`)
-        vars.push(`existing_subnet_name=${state.subnetName || "<subnet-name>"}`)
-        vars.push(`existing_ip_range_pods=${state.ipRangePods || "<pods-range>"}`)
-        vars.push(`existing_ip_range_services=${state.ipRangeServices || "<services-range>"}`)
+    // Identity parameters
+    vars.push(`project_id=${state.projectId}`)
+    vars.push(`subdomain=${state.subdomain}`)
+    vars.push(`gcp_project_id=[GCP_PROJECT_ID]`)
+    vars.push(`gcp_location=${state.region}`)
+    vars.push(`gcp_zones=["${state.zone1}"]`)
+
+    // Network parameters
+    if (state.useOwnVpc) {
+      vars.push(`create_network=false`)
+      vars.push(`existing_network_name=${state.vpcName}`)
+      vars.push(`existing_subnet_name=${state.subnetName}`)
+      vars.push(`existing_ip_range_pods=${state.ipRangePods}`)
+      vars.push(`existing_ip_range_services=${state.ipRangeServices}`)
+      vars.push(`existing_subnet_cidr=${state.networkCidr}`)
+      vars.push(`existing_pod_cidr=${state.podCidr}`)
+      vars.push(`existing_service_cidr=${state.serviceCidr}`)
+    } else {
+      vars.push(`create_network=true`)
+      vars.push(`subnet_range=${state.networkCidr || "10.0.0.0/24"}`)
     }
 
-    if (state.setupMode === "advanced") {
-      if (state.useOwnVpc) {
-        vars.push(`vpc_name=${state.vpcName || "<vpc-name>"}`)
-        vars.push(`subnet_name=${state.subnetName || "<subnet-name>"}`)
-        vars.push(`ip_range_pods=${state.ipRangePods || "<pods-range>"}`)
-        vars.push(`ip_range_services=${state.ipRangeServices || "<services-range>"}`)
-        vars.push(`network_cidr=${state.networkCidr || "<cidr>"}`)
-      } else {
-        vars.push('create_vpc=true')
-        vars.push(`network_cidr=${state.networkCidr || "<cidr>"}`)
-      }
-    }
-    vars.push(`gcs_bucket_name=${state.gcsBucketName || "<bucket-name>"}`)
+    // Storage parameters
+    vars.push(`bucket=${state.gcsBucketName || "<bucket-name>"}`)
     vars.push(`hmac_access_key=${state.hmacAccessKey || "<access-key>"}`)
     vars.push(`hmac_secret_key=${state.hmacSecretKey || "<secret-key>"}`)
-    vars.push(`gcp_location=${state.region}`)
-    vars.push(`gcp_zones=["${state.zone1}","${state.zone2}"]`)
     
-    const inputValues = vars.join(',')
+    const inputValues = vars.join(",")
+    const deploymentName = `orchestrator-${state.projectId}`
 
-    return `gcloud infra-manager deployments apply "projects/[PROJECT_ID]/locations/${state.region}/deployments/orchestrator" \\
+    return `gcloud infra-manager deployments apply "projects/[PROJECT_ID]/locations/${state.region}/deployments/${deploymentName}" \\
   --local-source="." \\
   --input-values='${inputValues}' \\
   --service-account="projects/[PROJECT_ID]/serviceAccounts/[SERVICE_ACCOUNT]" \\
@@ -319,51 +320,49 @@ export function GCPCloudSetupWizard() {
   --location="${state.region}"`
   }
 
-  const getOutputsCommand = `REVISION_ID=$(gcloud infra-manager revisions list \\
-  --deployment="projects/[PROJECT_ID]/locations/${state.region}/deployments/orchestrator" \\
-  --sort-by="~createTime" --limit=1 --format="value(name)" | awk -F/ '{print $NF}')
+  const getOutputsCommand = `REVISION_ID=$(gcloud infra-manager deployments describe "orchestrator-${state.projectId}" \\
+  --location="${state.region}" \\
+  --format="value(latestRevision.basename())")
 
-gcloud infra-manager revisions describe $REVISION_ID \\
-  --deployment="orchestrator" \\
+gcloud infra-manager revisions describe "$REVISION_ID" \\
+  --deployment="orchestrator-${state.projectId}" \\
   --location="${state.region}" \\
   --format="json(applyResults.outputs)" > outputs.json`
 
+  const saName = `sa-${state.projectId}`.substring(0, 30)
+  const saEmail = `${saName}@[GCP_PROJECT_ID].iam.gserviceaccount.com`
+  const createHmacKeyCommand = `gcloud storage hmac create "${saEmail}" --project="[GCP_PROJECT_ID]"`
+
   const canGoNext = () => {
     switch (currentStep) {
+      case 0:
+        return true
       case 2:
         if (state.setupMode === "recommended") {
-          return (state.region || "").trim() !== "" && (state.zone1 || "").trim() !== "" && (state.zone2 || "").trim() !== ""
+          return (state.region || "").trim() !== "" && (state.zone1 || "").trim() !== ""
         }
         if (state.useOwnVpc) {
-          return (
-            (state.region || "").trim() !== "" &&
-            (state.zone1 || "").trim() !== "" &&
-            (state.zone2 || "").trim() !== "" &&
-            (state.vpcName || "").trim() !== "" &&
-            (state.subnetName || "").trim() !== "" &&
-            (state.ipRangePods || "").trim() !== "" &&
-            (state.ipRangeServices || "").trim() !== "" &&
-            (state.networkCidr || "").trim() !== ""
+          return !!(
+            state.region &&
+            state.vpcName &&
+            state.subnetName &&
+            state.ipRangePods &&
+            state.ipRangeServices &&
+            state.networkCidr &&
+            state.podCidr &&
+            state.serviceCidr
           )
         } else {
           return (state.networkCidr || "").trim() !== ""
         }
       case 3:
-        if (state.gcsAccountOption === "create") {
-          return (state.gcsBucketName || "").trim() !== ""
-        }
-        return (
-          (state.gcsBucketName || "").trim() !== "" && 
-          (state.hmacAccessKey || "").trim() !== "" && 
-          (state.hmacSecretKey || "").trim() !== ""
-        )
+        return (state.gcsBucketName || "").trim() !== ""
       case 5:
-        if (state.gcsAccountOption === "create") {
-          return state.outputsUploaded && 
-            (state.hmacAccessKey || "").trim() !== "" && 
-            (state.hmacSecretKey || "").trim() !== ""
+        const baseRequirement = state.outputsUploaded
+        if (state.gcsBucketName) {
+          return baseRequirement && !!state.hmacAccessKey && !!state.hmacSecretKey
         }
-        return state.outputsUploaded
+        return baseRequirement
       default:
         return true
     }
@@ -373,33 +372,38 @@ gcloud infra-manager revisions describe $REVISION_ID \\
     switch (currentStep) {
       case 0:
         return (
-          <div className="space-y-10">
-            <div className="space-y-4">
-              <h2 className="text-3xl font-bold tracking-tight">Provision your GCP Environment</h2>
-              <p className="text-lg text-muted-foreground">
-                Choose how you want to set up your networking and base infrastructure via Terraform.
+          <div className="text-center space-y-8 animate-in fade-in duration-500">
+            <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-xl shadow-blue-500/20">
+              <Cloud className="w-12 h-12 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">
+                Let&apos;s set up your cloud
+              </h1>
+              <p className="mt-3 text-lg text-muted-foreground">
+                This takes approximately 5 minutes
               </p>
             </div>
-
-            <div className="grid gap-6">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4 max-w-2xl mx-auto">
               <OptionCard
                 selected={state.setupMode === "recommended"}
                 onClick={() => updateState({ setupMode: "recommended" })}
                 recommended
                 icon={CheckCircle2}
-                title="Recommended"
-                description="Fully automated VPC, Subnet, and IAM setup managed by our modules."
+                title="Simple"
+                description="Automatically create a new private network for you."
               />
               <OptionCard
                 selected={state.setupMode === "advanced"}
                 onClick={() => updateState({ setupMode: "advanced" })}
                 icon={Settings}
                 title="Advanced"
-                description="Use your existing bootstrapped VPC network and custom IP ranges."
+                description="Use your own existing private network."
               />
             </div>
           </div>
         )
+
 
       case 2:
         return (
@@ -414,12 +418,12 @@ gcloud infra-manager revisions describe $REVISION_ID \\
             
             <div className="grid gap-8 max-w-2xl mx-auto">
               <div className="space-y-6">
-                <div className="grid sm:grid-cols-3 gap-4">
+                <div className="grid sm:grid-cols-2 gap-8">
                   <div className="space-y-2">
                     <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">GCP Region</Label>
                     <Select
                       value={state.region}
-                      onValueChange={(value) => updateState({ region: value, zone1: `${value}-a`, zone2: `${value}-b` })}
+                      onValueChange={(value) => updateState({ region: value, zone1: `${value}-a` })}
                     >
                       <SelectTrigger className="h-12 rounded-xl">
                         <SelectValue placeholder="Region" />
@@ -434,20 +438,11 @@ gcloud infra-manager revisions describe $REVISION_ID \\
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Zone 1</Label>
+                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Zone</Label>
                     <Input
                       value={state.zone1}
                       onChange={(e) => updateState({ zone1: e.target.value })}
                       placeholder={`${state.region}-a`}
-                      className="h-12 rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Zone 2</Label>
-                    <Input
-                      value={state.zone2}
-                      onChange={(e) => updateState({ zone2: e.target.value })}
-                      placeholder={`${state.region}-b`}
                       className="h-12 rounded-xl"
                     />
                   </div>
@@ -469,38 +464,46 @@ gcloud infra-manager revisions describe $REVISION_ID \\
                       />
                     </div>
 
-                    <Card>
-                      <CardContent className="p-6 space-y-6">
-                        {state.useOwnVpc && (
-                          <div className="space-y-4 mb-6 pb-6 border-b">
-                            <div className="space-y-2">
-                              <Label htmlFor="vpcName" className="text-xs font-black uppercase tracking-widest text-muted-foreground">VPC Name</Label>
-                              <Input id="vpcName" placeholder="testapp-app-958e7ba3-5d35" value={state.vpcName || ""} onChange={(e) => updateState({ vpcName: e.target.value })} className="h-12 rounded-xl" />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="subnetName" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Subnet Name</Label>
-                              <Input id="subnetName" placeholder="subnet-testapp" value={state.subnetName || ""} onChange={(e) => updateState({ subnetName: e.target.value })} className="h-12 rounded-xl" />
-                            </div>
-                            <div className="grid sm:grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label htmlFor="pods" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Pod IP Range Name</Label>
-                                <Input id="pods" placeholder="pods-range" value={state.ipRangePods || ""} onChange={(e) => updateState({ ipRangePods: e.target.value })} className="h-12 rounded-xl" />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="services" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Service IP Range Name</Label>
-                                <Input id="services" placeholder="services-range" value={state.ipRangeServices || ""} onChange={(e) => updateState({ ipRangeServices: e.target.value })} className="h-12 rounded-xl" />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        
+                    {state.useOwnVpc && (
+                      <div className="space-y-4 mb-6 pb-6 border-b">
                         <div className="space-y-2">
-                          <Label htmlFor="cidr" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Network CIDR Block</Label>
-                          <Input id="cidr" placeholder="10.128.0.0/20" value={state.networkCidr || ""} onChange={(e) => updateState({ networkCidr: e.target.value })} className="h-12 rounded-xl" />
-                          <p className="text-[10px] text-muted-foreground italic">The IP range of the {state.useOwnVpc ? "existing" : "new"} VPC</p>
+                          <Label htmlFor="vpcName" className="text-xs font-black uppercase tracking-widest text-muted-foreground">VPC Name</Label>
+                          <Input id="vpcName" placeholder="testapp-app-958e7ba3-5d35" value={state.vpcName || ""} onChange={(e) => updateState({ vpcName: e.target.value })} className="h-12 rounded-xl" />
                         </div>
-                      </CardContent>
-                    </Card>
+                        <div className="space-y-2">
+                          <Label htmlFor="subnetName" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Subnet Name</Label>
+                          <Input id="subnetName" placeholder="subnet-testapp" value={state.subnetName || ""} onChange={(e) => updateState({ subnetName: e.target.value })} className="h-12 rounded-xl" />
+                        </div>
+                        <div className="grid sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="pods" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Pod IP Range Name</Label>
+                            <Input id="pods" placeholder="pods-range" value={state.ipRangePods || ""} onChange={(e) => updateState({ ipRangePods: e.target.value })} className="h-12 rounded-xl" />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="services" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Service IP Range Name</Label>
+                            <Input id="services" placeholder="services-range" value={state.ipRangeServices || ""} onChange={(e) => updateState({ ipRangeServices: e.target.value })} className="h-12 rounded-xl" />
+                          </div>
+                        </div>
+
+                        {/* Secondary CIDR Blocks */}
+                        <div className="grid sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="podCidr" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Pod CIDR Block</Label>
+                            <Input id="podCidr" placeholder="10.1.0.0/16" value={state.podCidr || ""} onChange={(e) => updateState({ podCidr: e.target.value })} className="h-12 rounded-xl" />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="serviceCidr" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Service CIDR Block</Label>
+                            <Input id="serviceCidr" placeholder="10.2.0.0/20" value={state.serviceCidr || ""} onChange={(e) => updateState({ serviceCidr: e.target.value })} className="h-12 rounded-xl" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="cidr" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Network CIDR Block</Label>
+                      <Input id="cidr" placeholder="10.128.0.0/20" value={state.networkCidr || ""} onChange={(e) => updateState({ networkCidr: e.target.value })} className="h-12 rounded-xl" />
+                      <p className="text-[10px] text-muted-foreground italic">The IP range of the {state.useOwnVpc ? "existing" : "new"} VPC</p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -510,79 +513,96 @@ gcloud infra-manager revisions describe $REVISION_ID \\
 
       case 3:
         return (
-          <div className="space-y-8">
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold">Storage & Interoperability</h2>
-              <p className="text-muted-foreground text-sm">Configure your GCS buckets and S3-compatible HMAC keys.</p>
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="text-center">
+              <div className="inline-flex p-3 rounded-2xl bg-blue-100 text-blue-600 mb-4">
+                <Database className="w-6 h-6" />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900">Storage Configuration</h2>
+              <p className="mt-2 text-muted-foreground">Configure your GCS buckets and S3-compatible HMAC keys</p>
             </div>
 
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="bucket">GCS Bucket Name *</Label>
-                <Input id="bucket" placeholder="my-gcp-data-lake" value={state.gcsBucketName || ""} onChange={(e) => updateState({ gcsBucketName: e.target.value })} />
-              </div>
-
-              <div className="space-y-4">
-                <Label>Service Account Credentials</Label>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <OptionCard
-                    selected={state.gcsAccountOption === "create"}
-                    onClick={() => updateState({ gcsAccountOption: "create" })}
-                    icon={UserPlus}
-                    title="Create New SA"
-                    description="We'll give you a command to create a new Service Account."
+            <div className="space-y-8 max-w-xl mx-auto">
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">GCS Bucket Name</Label>
+                  <Input
+                    placeholder="my-gcp-data-lake"
+                    value={state.gcsBucketName}
+                    onChange={(e) => updateState({ gcsBucketName: e.target.value })}
+                    className="h-12 rounded-xl"
                   />
-                  <OptionCard
-                    selected={state.gcsAccountOption === "existing"}
-                    onClick={() => updateState({ gcsAccountOption: "existing" })}
-                    icon={KeyRound}
-                    title="Existing SA"
-                    description="Use an existing Service Account with HMAC keys."
-                  />
+                  <p className="text-[10px] text-muted-foreground italic">
+                    The name of the GCS bucket where your system state and backups will be stored.
+                  </p>
                 </div>
               </div>
-
-              <div className="flex items-center justify-between p-4 rounded-xl border bg-muted/30 shadow-sm">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <Label className="text-sm font-bold text-blue-900">Provision Storage Identity</Label>
-                    <Badge variant="secondary" className="bg-blue-100 text-blue-700 text-[10px] uppercase px-1.5 py-0">Recommended</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground italic">Create a dedicated GCP Service Account for Velero backups and Iceberg storage.</p>
-                </div>
-                <Switch
-                  checked={state.createStorageBackupSa}
-                  onCheckedChange={(checked) => updateState({ createStorageBackupSa: checked })}
-                />
-              </div>
-
-              {state.gcsAccountOption === "existing" && (
-                <div className="space-y-4 pt-4 border-t">
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="accessKey">HMAC Access Key *</Label>
-                      <Input id="accessKey" placeholder="GOOG..." value={state.hmacAccessKey || ""} onChange={(e) => updateState({ hmacAccessKey: e.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="secretKey">HMAC Secret Key *</Label>
-                      <Input id="secretKey" type="password" placeholder="••••••••" value={state.hmacSecretKey || ""} onChange={(e) => updateState({ hmacSecretKey: e.target.value })} />
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )
 
       case 5:
         return (
-          <div className="space-y-10 pb-10">
-            <div className="space-y-4">
-              <h2 className="text-3xl font-black">Review & Launch</h2>
-              <p className="text-lg text-muted-foreground">Deploy your GCP infrastructure using Terraform.</p>
+          <div className="space-y-8">
+            <div className="text-center">
+              <div className="inline-flex p-3 rounded-full bg-blue-100 mb-4">
+                <CheckCircle2 className="w-8 h-8 text-blue-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground">Review and Deploy</h2>
+              <p className="mt-2 text-muted-foreground">Follow these steps to complete your setup</p>
             </div>
 
-            <div className="space-y-12">
+            <div className="max-w-3xl mx-auto">
+              <Card className="bg-muted/30 border-none shadow-none mb-8 overflow-hidden">
+                <CardContent className="p-0">
+                  <div className="bg-blue-50 px-6 py-4 border-b border-blue-100 flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-blue-500 text-white">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-blue-900 leading-tight">What will be created?</h3>
+                      <p className="text-xs text-blue-700/70">A summary of the resources being provisioned</p>
+                    </div>
+                  </div>
+                  <div className="p-6 grid sm:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <div className="flex gap-3">
+                        <div className="mt-1 w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                        <div>
+                          <p className="text-sm font-semibold">Security & IAM</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            A dedicated Service Account and encryption keys (KMS) will be created. Managed keys typically incur a small monthly fee and usage costs.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <div className="mt-1 w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                        <div>
+                          <p className="text-sm font-semibold">Storage Access</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            HMAC credentials to connect your <span className="font-mono">{state.gcsBucketName}</span> bucket for state management.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      {!state.useOwnVpc && (
+                        <div className="flex gap-3">
+                          <div className="mt-1 w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                          <div>
+                            <p className="text-sm font-semibold">Private Network</p>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                              A new VPC, Subnet, and Cloud NAT will be provisioned to isolate your cluster's traffic. These resources may incur standard cloud provider costs.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="space-y-12">
               {/* Step 1: Download Template */}
               <div className="flex items-start gap-6">
                 <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-black shrink-0">1</div>
@@ -657,47 +677,49 @@ gcloud infra-manager revisions describe $REVISION_ID \\
                 </div>
               </div>
 
-              {/* Step 5: S3 Credentials */}
-              {state.gcsAccountOption === "create" && (
-                <div className="flex items-start gap-6">
+              {/* Step 5: HMAC Keys (Conditional) */}
+              {state.gcsBucketName && (
+                <div className="flex items-start gap-6 pt-12 border-t border-dashed">
                   <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-black shrink-0">5</div>
-                  <div className="flex-1 space-y-4 min-w-0">
-                    <div className="space-y-1">
-                      <p className="text-lg font-bold">Create HMAC Keys</p>
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        Run this command to generate S3-compatible HMAC keys for your new Service Account. You can find the Service Account email in the outputs.json file.
+                  <div className="flex-1 space-y-6">
+                    <div>
+                      <p className="text-lg font-bold">Generate HMAC access keys</p>
+                      <p className="text-sm text-muted-foreground leading-relaxed mt-1">
+                        Since you are using storage backups, you need to generate S3-compatible HMAC keys for the Service Account. Run this command in your Cloud Shell or terminal:
                       </p>
                     </div>
-
-                    <CommandBlock command="gcloud storage hmac create --service-account=[SA_EMAIL]" />
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 w-full">
+                    <CommandBlock command={createHmacKeyCommand} />
+                    <div className="grid sm:grid-cols-2 gap-6 p-6 bg-muted/30 rounded-2xl border border-border/50">
                       <div className="space-y-2">
                         <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">HMAC Access Key</Label>
                         <Input
                           placeholder="GOOG..."
-                          value={state.hmacAccessKey || ""}
+                          value={state.hmacAccessKey}
                           onChange={(e) => updateState({ hmacAccessKey: e.target.value })}
-                          className="h-10 rounded-lg font-mono text-xs"
+                          className="h-12 rounded-xl bg-background"
                         />
                       </div>
                       <div className="space-y-2">
                         <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">HMAC Secret Key</Label>
                         <Input
                           type="password"
-                          placeholder="••••••••••••••••"
-                          value={state.hmacSecretKey || ""}
+                          placeholder="••••••••••••"
+                          value={state.hmacSecretKey}
                           onChange={(e) => updateState({ hmacSecretKey: e.target.value })}
-                          className="h-10 rounded-lg"
+                          className="h-12 rounded-xl bg-background"
                         />
                       </div>
                     </div>
+                    <p className="text-[10px] text-muted-foreground italic flex items-center gap-1.5">
+                      <Shield className="w-3 h-3 text-blue-500" /> These keys are required to connect your cluster to Google Cloud Storage.
+                    </p>
                   </div>
                 </div>
               )}
             </div>
           </div>
-        )
+        </div>
+      )
 
       case 9:
         return (
@@ -706,7 +728,7 @@ gcloud infra-manager revisions describe $REVISION_ID \\
               <CheckCircle2 className="w-16 h-16" />
             </div>
             <div className="space-y-4">
-              <h2 className="text-4xl font-black tracking-tight">GCP Environment Ready</h2>
+              <h2 className="text-4xl font-black tracking-tight">System is Ready</h2>
               <p className="text-muted-foreground text-lg max-w-md mx-auto leading-relaxed">
                 Your high-performance infrastructure has been successfully connected and verified.
               </p>
@@ -717,7 +739,7 @@ gcloud infra-manager revisions describe $REVISION_ID \\
               </div>
             </div>
             <Button size="lg" className="bg-blue-600 hover:bg-blue-700 h-16 px-12 text-lg font-bold rounded-2xl shadow-xl shadow-blue-600/20 group" onClick={() => router.push("/gcp/cluster-setup")}>
-              Next: Configure GKE <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+              Next: Configure Cluster <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
             </Button>
           </div>
         )
@@ -728,65 +750,101 @@ gcloud infra-manager revisions describe $REVISION_ID \\
   }
 
   return (
-    <div className="min-h-screen bg-background pb-32">
-      <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
-            <span>Step {currentStepIndex + 1} of {visibleSteps.length}</span>
-            <span className="text-blue-600">{visibleSteps[currentStepIndex]?.title}</span>
-          </div>
-          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-blue-600 transition-all duration-700 ease-in-out"
-              style={{ width: `${((currentStepIndex + 1) / visibleSteps.length) * 100}%` }}
-            />
-          </div>
-          <div className="flex justify-between mt-3 overflow-x-auto pb-2 gap-6 no-scrollbar">
-            {visibleSteps.map((step, index) => {
-              const Icon = step.icon
-              const isActive = index === currentStepIndex
-              const isComplete = index < currentStepIndex
-              return (
-                <button
-                  key={step.id}
-                  onClick={() => isComplete && setCurrentStep(step.id)}
-                  className={cn(
-                    "flex items-center gap-2 whitespace-nowrap text-[10px] font-black uppercase tracking-widest transition-all",
-                    isActive ? "text-blue-600 translate-y-0" : isComplete ? "text-emerald-600" : "text-muted-foreground/30 cursor-not-allowed"
-                  )}
-                >
-                  <div className={cn(
-                    "w-7 h-7 rounded-lg flex items-center justify-center transition-all",
-                    isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" : isComplete ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/10" : "bg-muted text-muted-foreground/20"
-                  )}>
-                    <Icon className="w-4 h-4" />
-                  </div>
-                  <span className="hidden md:inline">{step.title}</span>
-                </button>
-              )
-            })}
-          </div>
+    <div className="min-h-screen bg-background">
+      <div className="max-w-6xl mx-auto px-4 py-12">
+        <div className="flex flex-col md:flex-row gap-12">
+          {/* Vertical Sidebar */}
+          <aside className="w-full md:w-64 shrink-0">
+            <div className="sticky top-24 space-y-8">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground mb-6">
+                  Wizard Progress
+                </h3>
+                <nav className="space-y-0">
+                  {STEPS.map((step, index) => {
+                    const Icon = step.icon
+                    const isActive = index === currentStepIndex
+                    const isComplete = index < currentStepIndex
+                    return (
+                      <div key={step.id} className="flex gap-4">
+                        <div className="flex flex-col items-center">
+                          <button
+                            onClick={() => isComplete && setCurrentStep(step.id)}
+                            disabled={!isComplete}
+                            className={cn(
+                              "w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all relative z-10",
+                              isActive
+                                ? "bg-white border-blue-500 text-blue-600 shadow-lg shadow-blue-500/20"
+                                : isComplete
+                                ? "bg-blue-500 border-blue-500 text-white"
+                                : "bg-muted border-transparent text-muted-foreground/30"
+                            )}
+                          >
+                            {isComplete ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+                          </button>
+                          {index < STEPS.length - 1 && (
+                            <div className={cn("w-0.5 h-10 -my-1 rounded relative z-0", isComplete ? "bg-blue-500" : "bg-muted")} />
+                          )}
+                        </div>
+                        <div className="pt-1.5 flex-1">
+                          <div className={cn("text-sm font-bold transition-colors", isActive ? "text-blue-600" : isComplete ? "text-foreground" : "text-muted-foreground/30")}>
+                            {step.title}
+                          </div>
+                          {isActive && (
+                            <div className="text-[10px] text-blue-500/70 font-medium uppercase tracking-wider animate-in fade-in slide-in-from-left-1">
+                              In Progress
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </nav>
+              </div>
+              
+              <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100 space-y-3">
+                <div className="flex items-center gap-2 text-blue-700">
+                  <Shield className="w-4 h-4" />
+                  <span className="text-[10px] font-black uppercase tracking-wider">Secure Setup</span>
+                </div>
+                <p className="text-[10px] text-blue-600 leading-relaxed">
+                  Your configuration is encrypted and stored locally in your browser.
+                </p>
+              </div>
+            </div>
+          </aside>
+
+          {/* Content Area */}
+          <main className="flex-1 min-w-0 pb-32">
+            <div className="animate-in fade-in-0 slide-in-from-bottom-4 duration-500">
+              {renderStepContent()}
+            </div>
+          </main>
         </div>
       </div>
 
-      <main className="max-w-4xl mx-auto px-4 py-12">
-        {renderStepContent()}
-      </main>
-
+      {/* Navigation */}
       {currentStep !== 9 && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/90 backdrop-blur-xl border-t py-6 px-4">
-          <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
-            <Button variant="ghost" onClick={goBack} disabled={currentStepIndex === 0} className="h-12 px-6 font-bold hover:bg-muted/50">
-              <ChevronLeft className="w-4 h-4 mr-2" /> Back
-            </Button>
-            <div className="flex-1 flex justify-end gap-3">
-              <Button 
-                onClick={goNext} 
-                disabled={!canGoNext()} 
-                className="w-full sm:w-auto min-w-[200px] h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-2xl shadow-blue-600/30 transition-all active:scale-95"
+        <div className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t z-50">
+          <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="hidden md:block w-64" /> {/* Spacer to align with content */}
+            <div className="flex-1 flex items-center justify-between md:pl-12">
+              <Button
+                variant="outline"
+                onClick={goBack}
+                disabled={currentStepIndex === 0}
+                className="gap-2 h-12 px-6 font-bold"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Back
+              </Button>
+              <Button
+                onClick={goNext}
+                disabled={!canGoNext()}
+                className="gap-2 h-12 px-8 bg-blue-600 hover:bg-blue-700 font-bold"
               >
                 {currentStep === 5 ? "Verify & Finish" : "Continue"}
-                <ChevronRight className="w-5 h-5 ml-2" />
+                <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
           </div>
