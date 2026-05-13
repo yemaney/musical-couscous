@@ -389,6 +389,10 @@ export function CloudSetupWizard() {
 
   const createAccessKeyCommand = `aws iam create-access-key --user-name cerebrixos-backup-user-${state.projectId || "<project-id>"}`
 
+  const enableServicesCommand = `aws iam create-service-linked-role --aws-service-name spot.amazonaws.com 2>/dev/null || true
+aws iam create-service-linked-role --aws-service-name eks.amazonaws.com 2>/dev/null || true
+aws iam create-service-linked-role --aws-service-name eks-nodegroup.amazonaws.com 2>/dev/null || true`
+
   const getOutputsCommand = `aws cloudformation describe-stacks \\
   --stack-name cloud-setup-stack \\
   --query "Stacks[0].Outputs" > outputs.json`
@@ -409,6 +413,43 @@ export function CloudSetupWizard() {
                 This takes approximately 5 minutes
               </p>
             </div>
+            <div className="max-w-2xl mx-auto pt-4">
+              <Card className="bg-slate-50/50 border-dashed border-2 border-slate-200 shadow-none">
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4 text-left">
+                    <div className="p-2 bg-slate-200/50 rounded-lg shrink-0">
+                      <Settings className="w-5 h-5 text-slate-600" />
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">CLI Prerequisites</h4>
+                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                          Before you can deploy, ensure your local environment is ready. You will run commands in the final step to provision your cloud.
+                        </p>
+                      </div>
+                      
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div className="flex gap-3">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-bold">AWS CLI</p>
+                            <p className="text-[10px] text-muted-foreground leading-tight">Installed and configured with <code className="text-blue-600">aws configure</code></p>
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-bold">Permissions</p>
+                            <p className="text-[10px] text-muted-foreground leading-tight">Admin access to create IAM roles and VPC networks</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4 max-w-2xl mx-auto">
               <OptionCard
                 selected={state.setupMode === "recommended"}
@@ -695,10 +736,24 @@ export function CloudSetupWizard() {
                   </div>
                 </div>
 
-                {/* Step 2: Run deploy command */}
+                {/* Step 2: Enable Services */}
                 <div className="flex items-start gap-4">
                   <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 font-semibold text-sm shrink-0">
                     2
+                  </div>
+                  <div className="flex-1 space-y-3">
+                    <p className="text-sm font-medium">Enable cloud services</p>
+                    <p className="text-sm text-muted-foreground">
+                      Ensure your account has the required service-linked roles. Run this command:
+                    </p>
+                    <CommandBlock command={enableServicesCommand} onCopy={() => {}} />
+                  </div>
+                </div>
+
+                {/* Step 3: Run deploy command */}
+                <div className="flex items-start gap-4">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 font-semibold text-sm shrink-0">
+                    3
                   </div>
                   <div className="flex-1 space-y-3">
                     <p className="text-sm font-medium">Run the setup command</p>
@@ -709,10 +764,10 @@ export function CloudSetupWizard() {
                   </div>
                 </div>
 
-                {/* Step 3: Get outputs */}
+                {/* Step 4: Get outputs */}
                 <div className="flex items-start gap-4">
                   <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 font-semibold text-sm shrink-0">
-                    3
+                    4
                   </div>
                   <div className="flex-1 space-y-3">
                     <p className="text-sm font-medium">Save the results</p>
@@ -723,10 +778,10 @@ export function CloudSetupWizard() {
                   </div>
                 </div>
 
-                {/* Step 4: Upload */}
+                {/* Step 5: Upload */}
                 <div className="flex items-start gap-4">
                   <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 font-semibold text-sm shrink-0">
-                    4
+                    5
                   </div>
                   <div className="flex-1 space-y-3">
                     <div className="flex items-center justify-between">
@@ -763,11 +818,11 @@ export function CloudSetupWizard() {
                   </div>
                 </div>
 
-                {/* Step 5: Access Keys (Conditional) */}
+                {/* Step 6: Access Keys (Conditional) */}
                 {state.s3BucketName && (
                   <div className="flex items-start gap-4 pt-6 border-t border-dashed">
                     <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 font-semibold text-sm shrink-0">
-                      5
+                      6
                     </div>
                     <div className="flex-1 space-y-4">
                       <div>

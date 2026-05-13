@@ -313,13 +313,45 @@ export function GCPCloudSetupWizard() {
     const inputValues = vars.join(",")
     const deploymentName = `orchestrator-${state.projectId}`
 
-    return `gcloud infra-manager deployments apply "projects/${state.gcpProjectId || "[GCP_PROJECT_ID]"}/locations/${state.region}/deployments/${deploymentName}" \\
+  return `gcloud infra-manager deployments apply "projects/${state.gcpProjectId || "[GCP_PROJECT_ID]"}/locations/${state.region}/deployments/${deploymentName}" \\
   --local-source="." \\
   --input-values='${inputValues}' \\
-  --service-account="projects/${state.gcpProjectId || "[GCP_PROJECT_ID]"}/serviceAccounts/[SERVICE_ACCOUNT]" \\
+  --service-account="projects/${state.gcpProjectId || "[GCP_PROJECT_ID]"}/serviceAccounts/infra-manager@${state.gcpProjectId || "[GCP_PROJECT_ID]"}.iam.gserviceaccount.com" \\
   --project="${state.gcpProjectId || "[GCP_PROJECT_ID]"}" \\
   --location="${state.region}"`
   }
+
+  const enableApisCommand = `gcloud services enable \\
+  config.googleapis.com \\
+  cloudresourcemanager.googleapis.com \\
+  container.googleapis.com \\
+  compute.googleapis.com \\
+  iam.googleapis.com \\
+  iamcredentials.googleapis.com \\
+  servicenetworking.googleapis.com \\
+  cloudbilling.googleapis.com \\
+  apikeys.googleapis.com \\
+  cloudkms.googleapis.com \\
+  --project="${state.gcpProjectId || "[GCP_PROJECT_ID]"}"`
+
+  const createInfraManagerSaCommand = `gcloud iam service-accounts create "infra-manager" \\
+  --display-name="Infra Manager for ${state.projectId}" \\
+  --project="${state.gcpProjectId || "[GCP_PROJECT_ID]"}"
+
+for ROLE in \\
+  "roles/config.agent" \\
+  "roles/compute.networkAdmin" \\
+  "roles/iam.serviceAccountAdmin" \\
+  "roles/iam.roleAdmin" \\
+  "roles/cloudkms.admin" \\
+  "roles/iam.workloadIdentityPoolAdmin" \\
+  "roles/serviceusage.serviceUsageAdmin" \\
+  "roles/iam.securityAdmin"; \\
+do \\
+  gcloud projects add-iam-policy-binding "${state.gcpProjectId || "[GCP_PROJECT_ID]"}" \\
+    --member="serviceAccount:infra-manager@${state.gcpProjectId || "[GCP_PROJECT_ID]"}.iam.gserviceaccount.com" \\
+    --role="$ROLE"; \\
+done`
 
   const getOutputsCommand = `REVISION_ID=$(gcloud infra-manager deployments describe "orchestrator-${state.projectId}" \\
   --project="${state.gcpProjectId || "[GCP_PROJECT_ID]"}" \\
@@ -387,6 +419,43 @@ gcloud infra-manager revisions describe "$REVISION_ID" \\
                 This takes approximately 5 minutes
               </p>
             </div>
+            <div className="max-w-2xl mx-auto pt-4">
+              <Card className="bg-slate-50/50 border-dashed border-2 border-slate-200 shadow-none">
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4 text-left">
+                    <div className="p-2 bg-slate-200/50 rounded-lg shrink-0">
+                      <Settings className="w-5 h-5 text-slate-600" />
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">CLI Prerequisites</h4>
+                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                          Before you can deploy, ensure your local environment is ready. You will run commands in the final step to provision your cloud.
+                        </p>
+                      </div>
+                      
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div className="flex gap-3">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-bold">Google Cloud CLI</p>
+                            <p className="text-[10px] text-muted-foreground leading-tight">Installed and authenticated with <code className="text-blue-600">gcloud auth login</code></p>
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-bold">Infra Manager</p>
+                            <p className="text-[10px] text-muted-foreground leading-tight">Component installed via <code className="text-blue-600">gcloud components install infra-manager</code></p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4 max-w-2xl mx-auto">
               <OptionCard
                 selected={state.setupMode === "recommended"}
@@ -629,9 +698,33 @@ gcloud infra-manager revisions describe "$REVISION_ID" \\
                 </div>
               </div>
 
-              {/* Step 2: Run Command */}
+              {/* Step 2: Enable APIs */}
               <div className="flex items-start gap-6">
                 <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-black shrink-0">2</div>
+                <div className="flex-1 space-y-4">
+                  <p className="text-lg font-bold">Enable Cloud APIs</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Ensure your GCP project has the required APIs enabled:
+                  </p>
+                  <CommandBlock command={enableApisCommand} />
+                </div>
+              </div>
+
+              {/* Step 3: Create Service Account */}
+              <div className="flex items-start gap-6">
+                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-black shrink-0">3</div>
+                <div className="flex-1 space-y-4">
+                  <p className="text-lg font-bold">Create Deployment Identity</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Create a secure service account for Infrastructure Manager to use. <span className="font-semibold text-foreground">Note: We do not have access to this role.</span>
+                  </p>
+                  <CommandBlock command={createInfraManagerSaCommand} />
+                </div>
+              </div>
+
+              {/* Step 4: Run Command */}
+              <div className="flex items-start gap-6">
+                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-black shrink-0">4</div>
                 <div className="flex-1 space-y-4">
                   <p className="text-lg font-bold">Apply Configuration</p>
                   <p className="text-sm text-muted-foreground leading-relaxed">
@@ -643,9 +736,9 @@ gcloud infra-manager revisions describe "$REVISION_ID" \\
                 </div>
               </div>
 
-              {/* Step 3: Get Outputs */}
+              {/* Step 5: Get Outputs */}
               <div className="flex items-start gap-6">
-                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-black shrink-0">3</div>
+                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-black shrink-0">5</div>
                 <div className="flex-1 space-y-4">
                   <p className="text-lg font-bold">Export Deployment Metadata</p>
                   <p className="text-sm text-muted-foreground leading-relaxed">
@@ -655,9 +748,9 @@ gcloud infra-manager revisions describe "$REVISION_ID" \\
                 </div>
               </div>
 
-              {/* Step 4: Upload File */}
+              {/* Step 6: Upload File */}
               <div className="flex items-start gap-6">
-                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-black shrink-0">4</div>
+                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-black shrink-0">6</div>
                 <div className="flex-1 space-y-4">
                   <p className="text-lg font-bold">Connect Your Environment</p>
                   <p className="text-sm text-muted-foreground leading-relaxed">
@@ -689,10 +782,10 @@ gcloud infra-manager revisions describe "$REVISION_ID" \\
                 </div>
               </div>
 
-              {/* Step 5: HMAC Keys (Conditional) */}
+              {/* Step 7: HMAC Keys (Conditional) */}
               {state.gcsBucketName && (
                 <div className="flex items-start gap-6 pt-12 border-t border-dashed">
-                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-black shrink-0">5</div>
+                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-black shrink-0">7</div>
                   <div className="flex-1 space-y-6">
                     <div>
                       <p className="text-lg font-bold">Generate HMAC access keys</p>
