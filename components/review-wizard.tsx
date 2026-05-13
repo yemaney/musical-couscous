@@ -149,9 +149,9 @@ export function ReviewWizard() {
                       <h4 className="font-bold text-sm uppercase tracking-wider text-slate-900">Network</h4>
                     </div>
                  </div>
-                 <p className="text-xs text-muted-foreground leading-relaxed">
-                   Your system will run inside the private network that was already set up for you. These values were imported from your setup file.
-                 </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Your system will run inside the private network that was already set up for you. These values were imported from your cloud environment setup.
+                  </p>
                  
                  <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5 p-3 rounded-xl bg-blue-50/50 border border-blue-100/50">
@@ -291,8 +291,8 @@ export function ReviewWizard() {
 
                  <div className="space-y-8">
                     <div className="space-y-2">
-                      <Label className="text-sm font-bold text-slate-900">Cloud Orchestrator IAM Role</Label>
-                      <p className="text-[10px] text-muted-foreground -mt-1.5 font-medium">The primary permission used to automate the creation and management of your cloud resources.</p>
+                      <Label className="text-sm font-bold text-slate-900">System Orchestrator Identity</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-1.5 font-medium">The primary identity used to automate the creation and management of your cloud resources.</p>
                       <div className="ml-6 space-y-1">
                         <code className="block p-2 bg-slate-50 rounded text-[10px] font-mono break-all border border-slate-200 text-slate-600 min-h-[2.5rem]">
                           {clusterState.orchestratorRoleArn || "Pending outputs..."}
@@ -301,7 +301,7 @@ export function ReviewWizard() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-sm font-bold text-slate-900">Server Operation IAM Role</Label>
+                      <Label className="text-sm font-bold text-slate-900">Compute Node Identity</Label>
                       <p className="text-[10px] text-muted-foreground -mt-1.5 font-medium">Permissions that allow your compute servers to run applications and securely access cloud services.</p>
                       <div className="ml-6 space-y-1">
                         <code className="block p-2 bg-slate-50 rounded text-[10px] font-mono break-all border border-slate-200 text-slate-600 min-h-[2.5rem]">
@@ -311,8 +311,8 @@ export function ReviewWizard() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-sm font-bold text-slate-900">System Management IAM Role</Label>
-                      <p className="text-[10px] text-muted-foreground -mt-1.5 font-medium">The central permission used to monitor and maintain the health and security of your cluster.</p>
+                      <Label className="text-sm font-bold text-slate-900">Infrastructure Identity</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-1.5 font-medium">Provides the cluster with the necessary permissions to manage its associated cloud resources.</p>
                       <div className="ml-6 space-y-1">
                         <code className="block p-2 bg-slate-50 rounded text-[10px] font-mono break-all border border-slate-200 text-slate-600 min-h-[2.5rem]">
                           {clusterState.clusterRoleArn || "Pending outputs..."}
@@ -321,7 +321,7 @@ export function ReviewWizard() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-sm font-bold text-slate-900">Auto-Scaling IAM Role</Label>
+                      <Label className="text-sm font-bold text-slate-900">Auto-Scaling Identity</Label>
                       <p className="text-[10px] text-muted-foreground -mt-1.5 font-medium">Allows the system to automatically adjust the number of servers based on your current workload.</p>
                       <div className="ml-6 space-y-1">
                         <code className="block p-2 bg-slate-50 rounded text-[10px] font-mono break-all border border-slate-200 text-slate-600 min-h-[2.5rem]">
@@ -331,7 +331,7 @@ export function ReviewWizard() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-sm font-bold text-slate-900">Backup & Recovery IAM Role</Label>
+                      <Label className="text-sm font-bold text-slate-900">Storage Backup Identity</Label>
                       <p className="text-[10px] text-muted-foreground -mt-1.5 font-medium">Permissions used to safely create backups of your data and restore them during recovery.</p>
                       <div className="ml-6 space-y-1">
                         <code className="block p-2 bg-slate-50 rounded text-[10px] font-mono break-all border border-slate-200 text-slate-600 min-h-[2.5rem]">
@@ -343,7 +343,7 @@ export function ReviewWizard() {
                     <div className="space-y-3 pt-6 border-t border-dashed border-slate-200">
                       <div className="flex items-center gap-2 text-emerald-600">
                         <Lock className="w-4 h-4" />
-                        <Label className="text-sm font-bold">Encryption Management Key (KMS)</Label>
+                        <Label className="text-sm font-bold">Master Encryption Key</Label>
                       </div>
                       <p className="text-[10px] text-muted-foreground ml-6 -mt-1.5 font-medium leading-relaxed">A master key used to encrypt and protect your system secrets and sensitive data at rest.</p>
                       <div className="ml-6">
@@ -356,13 +356,36 @@ export function ReviewWizard() {
                     <div className="space-y-3 pt-6 border-t border-dashed border-slate-200">
                       <div className="flex items-center gap-2 text-blue-600">
                         <Database className="w-4 h-4" />
-                        <Label className="text-sm font-bold">Storage Access User</Label>
+                        <Label className="text-sm font-bold">Billing & Storage Identity</Label>
                       </div>
-                      <p className="text-[10px] text-muted-foreground ml-6 -mt-1.5 font-medium leading-relaxed">A dedicated secure identity used to manage your datalake tables (Iceberg) and store system logs.</p>
-                      <div className="ml-6">
+                      <p className="text-[10px] text-muted-foreground ml-6 -mt-1.5 font-medium leading-relaxed">A dedicated secure identity used for pricing discovery and managing your datalake tables (Iceberg).</p>
+                      <div className="ml-6 space-y-1">
+                        <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold text-[9px]">IAM User Name</Label>
                         <code className="block p-2 bg-slate-50 rounded text-[10px] font-mono break-all border border-slate-200 text-slate-600">
                           {clusterState.s3BackupUserName || "Pending outputs..."}
                         </code>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 pt-6 border-t border-dashed border-slate-200">
+                      <div className="flex items-center gap-2 text-emerald-600">
+                        <Database className="w-4 h-4" />
+                        <Label className="text-sm font-bold">Storage Access Keys</Label>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground ml-6 -mt-1.5 font-medium leading-relaxed">S3-compatible credentials used for managing your datalake and system logs.</p>
+                      <div className="ml-6 space-y-3">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold text-[9px]">Access Key ID (HMAC)</Label>
+                          <code className="block p-2 bg-slate-50 rounded text-[10px] font-mono break-all border border-slate-200 text-slate-600">
+                            {clusterState.hmacAccessKey || "Imported from setup"}
+                          </code>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold text-[9px]">Secret Access Key (HMAC)</Label>
+                          <code className="block p-2 bg-slate-50 rounded text-[10px] font-mono break-all border border-slate-200 text-slate-600">
+                            {clusterState.hmacSecretKey ? "••••••••••••••••" : "Imported from setup"}
+                          </code>
+                        </div>
                       </div>
                     </div>
                  </div>

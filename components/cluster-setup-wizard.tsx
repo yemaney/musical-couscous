@@ -95,6 +95,8 @@ interface ClusterState {
   privateRouteTableId: string
   s3VpcEndpointId: string
   s3BackupUserName: string
+  hmacAccessKey: string
+  hmacSecretKey: string
   // Provisioned Outputs
   provisioningOutputs?: Record<string, string>
 }
@@ -208,6 +210,8 @@ export function ClusterSetupWizard() {
     privateRouteTableId: "",
     s3VpcEndpointId: "",
     s3BackupUserName: "",
+    hmacAccessKey: "",
+    hmacSecretKey: "",
   })
 
   // Load data from previous step
@@ -308,25 +312,10 @@ export function ClusterSetupWizard() {
       <div className="max-w-2xl mx-auto px-4 py-12">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Your System Configuration</h1>
+          <h1 className="text-3xl font-bold text-foreground">Your Cloud Environment</h1>
           <p className="mt-2 text-muted-foreground">
             Review your system details — these are automatically filled in for you.
           </p>
-        </div>
-
-        {/* Reassurance message */}
-        <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-          <div className="flex gap-3">
-            <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm text-blue-800 font-medium">
-                Most users don&apos;t need to change anything here
-              </p>
-              <p className="text-sm text-blue-700 mt-1">
-                We&apos;ve pre-filled everything with secure, recommended defaults. You can continue without making any changes.
-              </p>
-            </div>
-          </div>
         </div>
 
         {/* System Summary */}
@@ -386,7 +375,7 @@ export function ClusterSetupWizard() {
           >
             <div className="space-y-6 pt-4">
               <p className="text-sm text-muted-foreground">
-                Your system will run inside the private network that was already set up for you. These values were imported from your setup file.
+                Your system will run inside the private network that was already set up for you. These values were imported from your cloud environment setup.
               </p>
 
               <div className="grid gap-4">
@@ -535,10 +524,10 @@ export function ClusterSetupWizard() {
                  <div className="space-y-6">
                   {/* Deployment Role */}
                   <div className="space-y-2">
-                    <Label className="text-sm font-semibold">Cloud Orchestrator IAM Role</Label>
-                    <p className="text-[10px] text-muted-foreground -mt-1.5">The primary permission used to automate the creation and management of your cloud resources.</p>
+                    <Label className="text-sm font-semibold">System Orchestrator Identity</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-1.5">The primary identity used to automate the creation and management of your cloud resources.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">IAM Role ARN</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.orchestratorRoleArn || "Pending outputs..."}
                       </code>
@@ -547,10 +536,10 @@ export function ClusterSetupWizard() {
 
                   {/* Worker Node Role */}
                   <div className="space-y-2">
-                    <Label className="text-sm font-semibold">Server Operation IAM Role</Label>
+                    <Label className="text-sm font-semibold">Compute Node Identity</Label>
                     <p className="text-[10px] text-muted-foreground -mt-1.5">Permissions that allow your compute servers to run applications and securely access cloud services.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">IAM Role ARN</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.nodeGroupRoleArn || "Pending outputs..."}
                       </code>
@@ -559,10 +548,10 @@ export function ClusterSetupWizard() {
 
                   {/* System Management Role */}
                   <div className="space-y-2">
-                    <Label className="text-sm font-semibold">System Management IAM Role</Label>
-                    <p className="text-[10px] text-muted-foreground -mt-1.5">The central permission used to monitor and maintain the health and security of your cluster.</p>
+                    <Label className="text-sm font-semibold">Infrastructure Identity</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-1.5">Provides the cluster with the necessary permissions to manage its associated cloud resources.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">IAM Role ARN</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.clusterRoleArn || "Pending outputs..."}
                       </code>
@@ -571,10 +560,10 @@ export function ClusterSetupWizard() {
 
                   {/* Karpenter Role */}
                   <div className="space-y-2">
-                    <Label className="text-sm font-semibold">Auto-Scaling IAM Role</Label>
+                    <Label className="text-sm font-semibold">Auto-Scaling Identity</Label>
                     <p className="text-[10px] text-muted-foreground -mt-1.5">Allows the system to automatically adjust the number of servers based on your current workload.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">IAM Role ARN</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.karpenterRoleArn || "Pending outputs..."}
                       </code>
@@ -583,10 +572,10 @@ export function ClusterSetupWizard() {
 
                   {/* Velero Role */}
                   <div className="space-y-2">
-                    <Label className="text-sm font-semibold">Backup & Recovery IAM Role</Label>
+                    <Label className="text-sm font-semibold">Storage Backup Identity</Label>
                     <p className="text-[10px] text-muted-foreground -mt-1.5">Permissions used to safely create backups of your data and restore them during recovery.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Role ARN</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">IAM Role ARN</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.veleroRoleArn || "Pending outputs..."}
                       </code>
@@ -597,7 +586,7 @@ export function ClusterSetupWizard() {
                   <div className="space-y-2 pt-4 border-t border-dashed">
                     <div className="flex items-center gap-2 text-emerald-600">
                       <Lock className="w-4 h-4" />
-                      <Label className="text-sm font-bold">Encryption Management Key (KMS)</Label>
+                      <Label className="text-sm font-bold">Master Encryption Key</Label>
                     </div>
                     <p className="text-[10px] text-muted-foreground ml-6 -mt-1">A master key used to encrypt and protect your system secrets and sensitive data at rest.</p>
                     <div className="ml-6 space-y-1">
@@ -612,14 +601,37 @@ export function ClusterSetupWizard() {
                   <div className="space-y-2 pt-4 border-t border-dashed">
                     <div className="flex items-center gap-2 text-blue-600">
                       <Database className="w-4 h-4" />
-                      <Label className="text-sm font-bold">Storage Access User</Label>
+                      <Label className="text-sm font-bold">Billing & Storage Identity</Label>
                     </div>
-                    <p className="text-[10px] text-muted-foreground ml-6 -mt-1">A dedicated secure identity used to manage your datalake tables (Iceberg) and store system logs.</p>
+                    <p className="text-[10px] text-muted-foreground ml-6 -mt-1">A dedicated secure identity used for pricing discovery and managing your datalake tables (Iceberg).</p>
                     <div className="ml-6 space-y-1">
                       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">User Name</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
                         {state.s3BackupUserName || "Pending outputs..."}
                       </code>
+                    </div>
+                  </div>
+
+                  {/* Storage Credentials */}
+                  <div className="space-y-2 pt-4 border-t border-dashed">
+                    <div className="flex items-center gap-2 text-emerald-600">
+                      <Database className="w-4 h-4" />
+                      <Label className="text-sm font-bold">Storage Access Keys</Label>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground ml-6 -mt-1">S3-compatible credentials used for managing your datalake and system logs.</p>
+                    <div className="ml-6 space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Access Key ID (HMAC)</Label>
+                        <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
+                          {state.hmacAccessKey || "Imported from setup"}
+                        </code>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Secret Access Key (HMAC)</Label>
+                        <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
+                          {state.hmacSecretKey ? "••••••••••••••••" : "Imported from setup"}
+                        </code>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -668,7 +680,7 @@ export function ClusterSetupWizard() {
               className="gap-2 bg-emerald-600 hover:bg-emerald-700 h-10 px-8"
               onClick={() => router.push("/aws/compute-strategy")}
             >
-              Continue to System Power
+              Continue to Compute Settings
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>

@@ -6,15 +6,15 @@ import { cn } from "@/lib/utils"
 
 const AWS_STAGES = [
   { path: "/aws/cloud-setup",       label: "System Setup",          icon: Cloud,        step: 1 },
-  { path: "/aws/cluster-setup",     label: "System Configuration",  icon: Server,       step: 2 },
-  { path: "/aws/compute-strategy",  label: "System Power",          icon: Zap,          step: 3 },
+  { path: "/aws/cluster-setup",     label: "System Review",         icon: Server,       step: 2 },
+  { path: "/aws/compute-strategy",  label: "Compute Settings",      icon: Zap,          step: 3 },
   { path: "/aws/review",            label: "Launch",                icon: Rocket,       step: 4 },
 ]
 
 const GCP_STAGES = [
   { path: "/gcp/cloud-setup",       label: "System Setup",          icon: Cloud,        step: 1 },
-  { path: "/gcp/cluster-setup",     label: "System Configuration",  icon: Server,       step: 2 },
-  { path: "/gcp/compute-strategy",  label: "System Power",          icon: Zap,          step: 3 },
+  { path: "/gcp/cluster-setup",     label: "System Review",         icon: Server,       step: 2 },
+  { path: "/gcp/compute-strategy",  label: "Compute Settings",      icon: Zap,          step: 3 },
   { path: "/gcp/review",            label: "Launch",                icon: Rocket,       step: 4 },
 ]
 

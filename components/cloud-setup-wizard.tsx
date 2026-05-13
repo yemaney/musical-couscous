@@ -99,7 +99,7 @@ const initialState: WizardState = {
   nodeSecurityGroupId: "",
   networkCidr: "10.0.0.0/16",
   serviceCidr: "172.20.0.0/16",
-  useOwnVpc: true,
+  useOwnVpc: false,
   s3UserOption: "create",
   s3BucketName: "",
   accessKeyId: "",
@@ -829,7 +829,7 @@ export function CloudSetupWizard() {
                 router.push("/aws/cluster-setup")
               }}
             >
-              Continue to Cluster Setup
+              Continue to System Review
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
@@ -924,15 +924,6 @@ export function CloudSetupWizard() {
                 </nav>
               </div>
               
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 space-y-3">
-                <div className="flex items-center gap-2 text-emerald-700">
-                  <Shield className="w-4 h-4" />
-                  <span className="text-[10px] font-black uppercase tracking-wider">Secure Setup</span>
-                </div>
-                <p className="text-[10px] text-emerald-600 leading-relaxed">
-                  Your configuration is encrypted and stored locally in your browser.
-                </p>
-              </div>
             </div>
           </aside>
 

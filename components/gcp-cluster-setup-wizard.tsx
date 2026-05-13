@@ -59,6 +59,16 @@ interface ClusterState {
   kmsKeyName: string
   backupSaEmail: string
   gcsBucketName: string
+  subnetCidr: string
+  podCidr: string
+  serviceCidr: string
+  routerName: string
+  natName: string
+  kmsKeyRingName: string
+  opencostApiKey: string
+  customRoles: string[]
+  hmacAccessKey: string
+  hmacSecretKey: string
 }
 
 function HelperTooltip({ text }: { text: string }) {
@@ -155,6 +165,16 @@ export function GCPClusterSetupWizard() {
     kmsKeyName: "projects/wired-height-365016/locations/northamerica-northeast2/keyRings/gke-keyring-58498364-0ad4-d30a/cryptoKeys/gke-key-58498364-0ad4",
     backupSaEmail: "backup-sa-58498364-0ad4@wired-height-365016.iam.gserviceaccount.com",
     gcsBucketName: "",
+    subnetCidr: "",
+    podCidr: "",
+    serviceCidr: "",
+    routerName: "",
+    natName: "",
+    kmsKeyRingName: "",
+    opencostApiKey: "",
+    customRoles: [],
+    hmacAccessKey: "",
+    hmacSecretKey: "",
   })
 
   useEffect(() => {
@@ -180,6 +200,16 @@ export function GCPClusterSetupWizard() {
             kmsKeyName: outputs.gcp_kms_key_name || prev.kmsKeyName,
             backupSaEmail: outputs.backup_sa_email || prev.backupSaEmail,
             gcsBucketName: setupState.gcsBucketName || prev.gcsBucketName,
+            subnetCidr: outputs.gcp_subnet_cidr || prev.subnetCidr,
+            podCidr: outputs.gcp_pod_cidr || prev.podCidr,
+            serviceCidr: outputs.gcp_service_cidr || prev.serviceCidr,
+            routerName: outputs.gcp_router_name || prev.routerName,
+            natName: outputs.gcp_nat_name || prev.natName,
+            kmsKeyRingName: outputs.gcp_kms_key_ring_name || prev.kmsKeyRingName,
+            opencostApiKey: outputs.opencost_api_key || prev.opencostApiKey,
+            customRoles: outputs.gcp_custom_roles || prev.customRoles,
+            hmacAccessKey: setupState.hmacAccessKey || prev.hmacAccessKey,
+            hmacSecretKey: setupState.hmacSecretKey || prev.hmacSecretKey,
           }))
         } else {
           setState(prev => ({
@@ -191,6 +221,11 @@ export function GCPClusterSetupWizard() {
             region: setupState.region || prev.region,
             zones: setupState.zones || prev.zones,
             gcsBucketName: setupState.gcsBucketName || prev.gcsBucketName,
+            subnetCidr: setupState.networkCidr || prev.subnetCidr,
+            podCidr: setupState.podCidr || prev.podCidr,
+            serviceCidr: setupState.serviceCidr || prev.serviceCidr,
+            hmacAccessKey: setupState.hmacAccessKey || prev.hmacAccessKey,
+            hmacSecretKey: setupState.hmacSecretKey || prev.hmacSecretKey,
           }))
         }
       } catch (e) {
@@ -214,9 +249,10 @@ export function GCPClusterSetupWizard() {
   }
 
   const validations = {
-    clusterName: state.clusterName.length >= 3,
-    permissions: true,
-    encryption: true,
+    clusterName: (state.clusterName || "").length >= 3,
+    region: !!state.region,
+    permissions: !!state.orchestratorSaEmail,
+    encryption: !!state.kmsKeyName,
   }
 
   const allValid = Object.values(validations).every(Boolean)
@@ -225,51 +261,52 @@ export function GCPClusterSetupWizard() {
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-2xl mx-auto px-4 py-12">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold">GKE Settings</h1>
+          <h1 className="text-3xl font-bold text-foreground">Your Cloud Environment</h1>
           <p className="mt-2 text-muted-foreground">
-            Configure your Kubernetes engine foundations on GCP
+            Review your system details — these are automatically filled in for you.
           </p>
         </div>
 
-        <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-          <div className="flex gap-3">
-            <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm text-blue-800 font-medium">Pre-filled with GCP defaults</p>
-              <p className="text-sm text-blue-700 mt-1">We&apos;ve optimized these settings for standard data workloads. You can modify them in Advanced Mode if needed.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Basic Setup - Always visible */}
+        {/* System Summary */}
         <div className="space-y-6 mb-6">
-          <Card>
+          <Card className="border-blue-100 shadow-sm bg-blue-50/10">
             <CardContent className="p-6">
               <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 rounded-lg bg-emerald-100">
-                  <Globe className="w-5 h-5 text-emerald-600" />
+                <div className="p-2 rounded-lg bg-blue-100">
+                  <Settings className="w-5 h-5 text-blue-600" />
                 </div>
-                <h2 className="font-semibold text-lg text-foreground">System Identity</h2>
+                <h2 className="font-semibold text-lg text-foreground">System Summary</h2>
               </div>
 
-              <div className="space-y-6">
+              <div className="grid gap-4">
                 {/* Cluster Name */}
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="clusterName">System Name</Label>
-                    <HelperTooltip text="A unique ID for your system. This is automatically assigned." />
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">System Identity</Label>
+                  <div className="flex items-center gap-3">
+                     <code className="px-3 py-1.5 bg-white rounded-lg text-sm font-mono border border-blue-200 text-blue-900">
+                        {state.clusterName}
+                     </code>
+                     <ValidationBadge valid={true} label="Identified" />
                   </div>
-                  <div className="flex gap-2">
-                    <Input
-                      id="clusterName"
-                      value={state.clusterName}
-                      readOnly
-                      className="bg-muted/50 cursor-not-allowed font-mono"
-                    />
+                </div>
+
+                <div className="grid grid-cols-2 gap-y-4 gap-x-8 pt-4 border-t border-blue-100/50">
+                  <div className="space-y-1">
+                    <ValidationBadge valid={validations.region} label="Location Ready" />
+                    <p className="text-[10px] text-muted-foreground ml-6">Region: {state.region || "us-central1"}</p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    This unique identifier is automatically assigned to your project.
-                  </p>
+                  <div className="space-y-1">
+                    <ValidationBadge valid={!!state.vpcName} label="Network Ready" />
+                    <p className="text-[10px] text-muted-foreground ml-6">Private & Secure</p>
+                  </div>
+                  <div className="space-y-1">
+                    <ValidationBadge valid={validations.permissions} label="Access Ready" />
+                    <p className="text-[10px] text-muted-foreground ml-6">IAM Roles Verified</p>
+                  </div>
+                  <div className="space-y-1">
+                    <ValidationBadge valid={validations.encryption} label="Data Protected" />
+                    <p className="text-[10px] text-muted-foreground ml-6">KMS Encrypted</p>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -287,7 +324,7 @@ export function GCPClusterSetupWizard() {
           >
             <div className="space-y-6 pt-4">
               <p className="text-sm text-muted-foreground">
-                Your system will run inside the private network that was already set up for you. These values were imported from your setup file.
+                Your system will run inside the private network that was already set up for you. These values were imported from your cloud environment setup.
               </p>
 
               <div className="grid gap-4">
@@ -314,7 +351,7 @@ export function GCPClusterSetupWizard() {
 
                 <div className="space-y-1">
                     <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">VPC Network</Label>
-                    <p className="text-[10px] text-muted-foreground -mt-0.5">Your private network's unique identifier</p>
+                    <p className="text-[10px] text-muted-foreground -mt-0.5">The main isolated container for all your cloud resources.</p>
                     <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
                       {state.vpcName || "Pending..."}
                     </code>
@@ -322,23 +359,56 @@ export function GCPClusterSetupWizard() {
 
                 <div className="space-y-1">
                   <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Subnet</Label>
-                  <p className="text-[10px] text-muted-foreground -mt-0.5">Internal access points for your system's servers</p>
+                  <p className="text-[10px] text-muted-foreground -mt-0.5">A secure section of your network where your system's servers run.</p>
                   <code className="block p-2 bg-muted rounded text-[10px] font-mono border break-all">
                     {state.subnetName || "Pending..."}
+                  </code>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Subnet CIDR Block</Label>
+                  <p className="text-[10px] text-muted-foreground -mt-0.5">The range of internal addresses for your primary network section.</p>
+                  <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                    {state.subnetCidr || "Pending..."}
                   </code>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                    <div className="space-y-1">
                       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Pod IP Range</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-0.5">Internal addresses reserved for application containers.</p>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
                         {state.podRange || "Pending..."}
+                      </code>
+                      <code className="block mt-1 p-1 px-2 bg-white/50 rounded text-[9px] font-mono border border-dashed text-muted-foreground">
+                        {state.podCidr || "0.0.0.0/0"}
                       </code>
                    </div>
                    <div className="space-y-1">
                       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Service IP Range</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-0.5">Addresses used for internal load balancing between apps.</p>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
                         {state.serviceRange || "Pending..."}
+                      </code>
+                      <code className="block mt-1 p-1 px-2 bg-white/50 rounded text-[9px] font-mono border border-dashed text-muted-foreground">
+                        {state.serviceCidr || "0.0.0.0/0"}
+                      </code>
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                   <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Cloud Router</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-0.5">The traffic director that manages communication for your network.</p>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                        {state.routerName || "Pending..."}
+                      </code>
+                   </div>
+                   <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Cloud NAT</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-0.5">Allows secure servers to download updates while staying private.</p>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono border">
+                        {state.natName || "Pending..."}
                       </code>
                    </div>
                 </div>
@@ -359,12 +429,10 @@ export function GCPClusterSetupWizard() {
               </p>                <div className="space-y-6">
                   {/* Deployment Service Account */}
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-semibold">Deployment Permission</Label>
-                      <HelperTooltip text="Allows the system to automatically provision your infrastructure on your behalf." />
-                    </div>
+                    <Label className="text-sm font-semibold">System Orchestrator Identity</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-1.5">The primary identity used to automate the creation and management of your cloud resources.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Service Account</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Service Account Email</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.orchestratorSaEmail || "Pending outputs..."}
                       </code>
@@ -373,12 +441,10 @@ export function GCPClusterSetupWizard() {
 
                   {/* Node Service Account */}
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-semibold">Server Permission</Label>
-                      <HelperTooltip text="Permissions granted to the underlying compute instances." />
-                    </div>
+                    <Label className="text-sm font-semibold">Compute Node Identity</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-1.5">Permissions that allow your compute servers to run applications and securely access cloud services.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Node Service Account</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Service Account Email</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.nodeSaEmail || "Pending outputs..."}
                       </code>
@@ -387,12 +453,10 @@ export function GCPClusterSetupWizard() {
 
                   {/* Backup Service Account */}
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-semibold">Backup & Storage</Label>
-                      <HelperTooltip text="Dedicated identity for storage operations and cluster backups." />
-                    </div>
+                    <Label className="text-sm font-semibold">Storage Backup Identity</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-1.5">Permissions used to safely create backups of your data and restore them during recovery.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Backup Service Account</Label>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Service Account Email</Label>
                       <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                         {state.backupSaEmail || "Pending outputs..."}
                       </code>
@@ -401,19 +465,17 @@ export function GCPClusterSetupWizard() {
 
                   {/* Workload Identity */}
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-semibold">Workload Identity</Label>
-                      <HelperTooltip text="Securely connects external identities to Google Cloud services." />
-                    </div>
+                    <Label className="text-sm font-semibold">Cross-Cloud Trust Pool</Label>
+                    <p className="text-[10px] text-muted-foreground -mt-1.5">Allows our platform to securely access your System Orchestrator Identity without needing static keys.</p>
                     <div className="ml-6 space-y-3">
                       <div className="space-y-1">
-                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Provider</Label>
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">WIF Provider</Label>
                         <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                           {state.wifProvider || "Pending outputs..."}
                         </code>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Pool</Label>
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">WIF Pool</Label>
                         <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
                           {state.wifPool || "Pending outputs..."}
                         </code>
@@ -425,16 +487,63 @@ export function GCPClusterSetupWizard() {
                   <div className="space-y-2 pt-4 border-t border-dashed">
                     <div className="flex items-center gap-2 text-blue-600">
                       <Lock className="w-4 h-4" />
-                      <Label className="text-sm font-bold">Data Encryption Key</Label>
-                      <HelperTooltip text="Customer Managed Encryption Key (CMEK) used for GKE application-layer secrets." />
+                      <Label className="text-sm font-bold">Master Encryption Key</Label>
                     </div>
+                    <p className="text-[10px] text-muted-foreground ml-6 -mt-1">A master key used to encrypt and protect your system secrets and sensitive data at rest.</p>
+                    <div className="ml-6 space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Encryption Key Group (KeyRing)</Label>
+                        <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
+                          {state.kmsKeyRingName || "Pending outputs..."}
+                        </code>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">KMS Crypto Key</Label>
+                        <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
+                          {state.kmsKeyName || "Pending outputs..."}
+                        </code>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Billing Security */}
+                  <div className="space-y-2 pt-4 border-t border-dashed">
+                    <div className="flex items-center gap-2 text-amber-600">
+                      <DollarSign className="w-4 h-4" />
+                      <Label className="text-sm font-bold">Billing Discovery Key</Label>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground ml-6 -mt-1">Restricted key used exclusively for cloud cost monitoring.</p>
                     <div className="ml-6 space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">KMS Key Resource</Label>
-                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border min-h-[2.5rem]">
-                        {state.kmsKeyName || "Pending outputs..."}
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">OpenCost API Key</Label>
+                      <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
+                        {state.opencostApiKey || "Sensitive · Managed"}
                       </code>
                     </div>
                   </div>
+
+                  {/* Storage Credentials */}
+                  <div className="space-y-2 pt-4 border-t border-dashed">
+                    <div className="flex items-center gap-2 text-emerald-600">
+                      <Database className="w-4 h-4" />
+                      <Label className="text-sm font-bold">Storage Access Keys</Label>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground ml-6 -mt-1">S3-compatible credentials used for managing your datalake and system logs.</p>
+                    <div className="ml-6 space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Access Key ID (HMAC)</Label>
+                        <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
+                          {state.hmacAccessKey || "Imported from setup"}
+                        </code>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Secret Access Key (HMAC)</Label>
+                        <code className="block p-2 bg-muted rounded text-[10px] font-mono break-all border">
+                          {state.hmacSecretKey ? "••••••••••••••••" : "Imported from setup"}
+                        </code>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
               </div>
             </SectionCard>
@@ -486,7 +595,7 @@ export function GCPClusterSetupWizard() {
             className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
             onClick={() => router.push("/gcp/compute-strategy")}
           >
-            Continue to Compute Strategy
+            Continue to Compute Settings
             <ChevronRight className="w-4 h-4" />
           </Button>
         </div>

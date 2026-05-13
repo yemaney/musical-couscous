@@ -60,7 +60,7 @@ interface HyperlakeState {
   isBackupEnabled: boolean
 }
 
-function PerformanceCard({
+function SelectionCard({
   selected,
   onClick,
   icon: Icon,
@@ -79,38 +79,41 @@ function PerformanceCard({
     <button
       onClick={onClick}
       className={cn(
-        "relative flex flex-col p-6 rounded-2xl border-2 text-left transition-all duration-300 group min-h-[160px]",
+        "relative w-full p-4 rounded-xl border-2 text-left transition-all duration-200 group",
         selected
-          ? "border-blue-500 bg-blue-50 shadow-lg shadow-blue-500/10"
-          : "border-border bg-card hover:border-blue-500/20 hover:bg-blue-50/30"
+          ? "border-blue-500 bg-blue-50 shadow-md shadow-blue-500/5"
+          : "border-border bg-card hover:border-blue-500/30 hover:bg-blue-50/30"
       )}
     >
       {recommended && (
-        <span className="absolute -top-3 left-4 px-3 py-1 text-[10px] font-black bg-blue-500 text-white rounded-full uppercase tracking-widest shadow-sm">
+        <span className="absolute -top-2.5 left-4 px-2 py-0.5 text-[10px] font-bold bg-blue-500 text-white rounded-full uppercase tracking-wider">
           Recommended
         </span>
       )}
-      <div className="flex justify-between items-start mb-4">
-        <div className={cn(
-          "w-12 h-12 rounded-xl flex items-center justify-center transition-colors",
-          selected ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground group-hover:text-blue-500"
-        )}>
-          <Icon className="w-6 h-6" />
+      <div className="flex gap-4">
+        <div
+          className={cn(
+            "p-2.5 rounded-lg shrink-0 transition-colors",
+            selected ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground group-hover:text-blue-600"
+          )}
+        >
+          <Icon className="w-5 h-5" />
         </div>
-        <div className={cn(
-          "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
-          selected ? "border-blue-500 bg-blue-500 text-white" : "border-muted-foreground/20"
-        )}>
-          {selected && <CheckCircle2 className="w-4 h-4" />}
+        <div className="flex-1 min-w-0">
+          <h4 className={cn("font-semibold text-sm", selected ? "text-blue-900" : "text-foreground")}>
+            {title}
+          </h4>
+          <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+            {description}
+          </p>
         </div>
-      </div>
-      <div className="space-y-1">
-        <h4 className={cn("font-bold text-base", selected ? "text-blue-900" : "text-foreground")}>
-          {title}
-        </h4>
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          {description}
-        </p>
+        <div className="shrink-0 mt-0.5">
+          {selected ? (
+            <CheckCircle2 className="w-5 h-5 text-blue-500" />
+          ) : (
+            <Circle className="w-5 h-5 text-muted-foreground/30" />
+          )}
+        </div>
       </div>
     </button>
   )
@@ -237,11 +240,14 @@ export function GCPComputeStrategyWizard() {
               <Zap className="w-8 h-8 text-white fill-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-black tracking-tight text-slate-900">Compute Strategy</h1>
-              <p className="text-muted-foreground font-medium">Define how your system capacity and data processing should behave.</p>
-            </div>
+              <h1 className="text-3xl font-black tracking-tight text-slate-900">Compute Settings</h1>
+            <p className="text-muted-foreground">
+              Allocate compute power to your cluster, configure automated backups, and choose whether to install the high-performance datalake.
+            </p>
           </div>
-          <div className="flex items-center gap-3 px-4 py-2 bg-muted/50 rounded-2xl border border-border/50">
+        </div>
+          
+        <div className="flex items-center gap-3 px-4 py-2 bg-muted/50 rounded-2xl border border-border/50">
             <Settings2 className="w-4 h-4 text-muted-foreground" />
             <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Advanced Mode</span>
             <Switch checked={state.isAdvancedMode} onCheckedChange={(val) => updateState({ isAdvancedMode: val })} />
@@ -252,23 +258,26 @@ export function GCPComputeStrategyWizard() {
           <div className="space-y-12">
             {!state.isAdvancedMode ? (
               /* SIMPLE MODE CONTENT */
-              <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="space-y-12">
                 {/* Performance Section */}
                 <div className="space-y-6">
                   <div className="flex items-center gap-2 text-blue-600">
                     <Activity className="w-5 h-5" />
                     <h3 className="text-lg font-bold text-slate-900">System Performance</h3>
                   </div>
+                  <p className="text-sm text-muted-foreground">
+                    These presets provide secure, recommended defaults for most workloads. If you need fine-grained control over specific machine sizes or scaling rules, you can configure them in <span className="font-semibold text-foreground">Advanced Mode</span> (top right).
+                  </p>
 
-                  <div className="grid sm:grid-cols-3 gap-6">
-                    <PerformanceCard
+                  <div className="grid sm:grid-cols-3 gap-4">
+                    <SelectionCard
                       selected={state.preset === "cost"}
                       onClick={() => handlePresetSelect("cost")}
                       icon={DollarSign}
                       title="Sandbox"
                       description="Ideal for development and testing."
                     />
-                    <PerformanceCard
+                    <SelectionCard
                       selected={state.preset === "balanced"}
                       onClick={() => handlePresetSelect("balanced")}
                       recommended
@@ -276,7 +285,7 @@ export function GCPComputeStrategyWizard() {
                       title="Production"
                       description="Optimized for standard business workloads."
                     />
-                    <PerformanceCard
+                    <SelectionCard
                       selected={state.preset === "high"}
                       onClick={() => handlePresetSelect("high")}
                       icon={Zap}
@@ -284,17 +293,26 @@ export function GCPComputeStrategyWizard() {
                       description="Maximum power for large-scale analytics."
                     />
                   </div>
-                  
+
+                  {/* Platform Extensions Section */}
+                  <div className="pt-8 border-t mt-8 space-y-4">
+                    <div className="flex items-center gap-2 text-blue-600">
+                      <LayoutGrid className="w-5 h-5" />
+                      <h3 className="font-bold text-lg text-slate-900">Platform Extensions</h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground">Additional features and cost-saving options for your cluster.</p>
+                  </div>
+
                   {/* Spot Optimization Card (Simple Mode) */}
-                  <Card className="border-2 border-blue-500/10 shadow-sm overflow-hidden rounded-[24px]">
-                    <div className="p-6 flex items-center justify-between bg-blue-50/10">
+                  <Card className="border-2 border-blue-500/10 shadow-sm overflow-hidden">
+                    <div className="p-6 flex items-center justify-between bg-blue-50/20">
                       <div className="flex items-center gap-4">
                         <div className="p-2.5 bg-white rounded-xl shadow-sm border border-blue-100">
                           <DollarSign className="w-5 h-5 text-blue-600" />
                         </div>
                         <div className="space-y-1">
-                          <h4 className="font-black text-slate-900">Spot Instance Optimization</h4>
-                          <p className="text-xs text-muted-foreground font-medium">Reduce compute costs significantly using spare capacity.</p>
+                          <h4 className="font-bold text-slate-900">Save Money on Compute</h4>
+                          <p className="text-xs text-muted-foreground font-medium">Uses spare cloud capacity to cut costs by up to 70%. May occasionally restart — not recommended for critical workloads.</p>
                         </div>
                       </div>
                       {state.preset === "cost" ? (
@@ -311,68 +329,43 @@ export function GCPComputeStrategyWizard() {
                     </div>
                   </Card>
 
-                  {/* System Addons Card (Simple Mode) */}
-                  {state.preset !== "cost" && (
-                    <Card className="border-2 border-blue-500/10 shadow-sm overflow-hidden rounded-[24px]">
-                      <div className="p-6 flex items-center justify-between bg-blue-50/10">
-                        <div className="flex items-center gap-4">
-                          <div className="p-2.5 bg-white rounded-xl shadow-sm border border-blue-100">
-                            <PlusSquare className="w-5 h-5 text-blue-600" />
-                          </div>
-                          <div className="space-y-1">
-                            <h4 className="font-black text-slate-900">Enable System Addons</h4>
-                            <p className="text-xs text-muted-foreground font-medium">Deploy optional utilities and system monitoring services.</p>
-                          </div>
-                        </div>
-                        <Switch 
-                          checked={state.isAddonEnabled} 
-                          onCheckedChange={(v) => {
-                            updateState({ isAddonEnabled: v })
-                          }}
-                          className="data-[state=checked]:bg-blue-600"
-                        />
-                      </div>
-                    </Card>
-                  )}
-
                   {/* Data Platform (Iceberg) Card (Simple Mode) */}
-                  <Card className="overflow-hidden border-2 border-blue-500/5 bg-blue-50/5 rounded-[32px]">
-                    <CardContent className="p-8 flex items-center justify-between">
-                      <div className="flex items-center gap-6">
-                        <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center text-3xl shadow-sm border border-blue-100">
+                  <Card className="border-2 border-blue-500/10 shadow-sm overflow-hidden">
+                    <div className="p-6 flex items-center justify-between bg-blue-50/20">
+                      <div className="flex items-center gap-4">
+                        <div className="p-2.5 bg-white rounded-xl shadow-sm border border-blue-100 text-2xl">
                           🧊
                         </div>
                         <div className="space-y-1">
-                          <h3 className="text-xl font-black text-slate-900">Data Platform (Iceberg)</h3>
-                          <p className="text-sm text-muted-foreground font-medium max-w-md">
-                            High-performance analytics, ACID transactions, and reliable data lake management.
+                          <h4 className="font-bold text-slate-900">Install Datalake (Iceberg)</h4>
+                          <p className="text-xs text-muted-foreground font-medium max-w-md">
+                            Organizes massive datasets in your cloud storage (GCS). Provides lightning-fast searching and keeps your data reliable and consistent, like a standard database.
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4 bg-white/50 px-6 py-3 rounded-2xl border border-blue-100">
-                        <span className="text-sm font-bold text-blue-900">{state.isIcebergEnabled ? "Enabled" : "Disabled"}</span>
+                      <div className="flex items-center gap-3">
                         <Switch 
                           checked={state.isIcebergEnabled}
                           onCheckedChange={(v) => updateState({ isIcebergEnabled: v })}
                           className="data-[state=checked]:bg-blue-600"
                         />
                       </div>
-                    </CardContent>
+                    </div>
                   </Card>
                 </div>
               </div>
             ) : (
               /* ADVANCED MODE CONTENT */
               <div className="animate-in fade-in zoom-in-95 duration-500 space-y-8">
-                 {/* Base System Machines */}
+                 {/* Core System Compute */}
                  <Card className="border-2 rounded-2xl">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-lg flex items-center gap-2 font-black text-slate-900">
                         <Server className="w-5 h-5 text-blue-600" />
-                        Base System Machines
+                        Core System Compute
                       </CardTitle>
                       <CardDescription className="font-medium text-xs">
-                        Core system nodes. Recommended: n2-standard-2 (2 vCPU, 8GB).
+                        Required to run critical baseline workloads for your cluster to work correctly.
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-2 grid sm:grid-cols-2 gap-8">
@@ -407,15 +400,15 @@ export function GCPComputeStrategyWizard() {
                     </CardContent>
                  </Card>
 
-                 {/* Hyperlake Machines */}
+                 {/* Hyperlake Compute (Data Processing) */}
                  <Card className="border-2 rounded-2xl">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-lg flex items-center gap-2 font-black text-slate-900">
                         <Zap className="w-5 h-5 text-emerald-600" />
-                        Hyperlake Machines
+                        Hyperlake Compute (Data Processing)
                       </CardTitle>
                       <CardDescription className="font-medium text-xs">
-                        Dedicated nodes for data processing and analytics workloads.
+                        Required to run your data processing workloads.
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-2 space-y-8">
@@ -450,47 +443,12 @@ export function GCPComputeStrategyWizard() {
                           </div>
                         </div>
                       </div>
-
-                      <div className="pt-6 border-t space-y-6">
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-1">
-                            <Label className="text-sm font-bold flex items-center gap-2 text-emerald-900">
-                              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                              Enable Backups
-                            </Label>
-                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Automated system recovery</p>
-                          </div>
-                          <Switch
-                            checked={state.isBackupEnabled}
-                            onCheckedChange={(val) => updateState({ isBackupEnabled: val })}
-                            className="data-[state=checked]:bg-emerald-600"
-                          />
-                        </div>
-
-                        {state.isBackupEnabled && (
-                          <div className="p-4 bg-emerald-50/30 rounded-xl border border-emerald-500/10 space-y-4 animate-in slide-in-from-top-2 duration-300">
-                            <Label className="text-[10px] font-bold text-emerald-800 uppercase tracking-widest">Backup Frequency</Label>
-                            <div className="flex gap-2">
-                              <Button
-                                variant={state.backupSchedule === "daily" ? "default" : "outline"}
-                                className={cn("flex-1 h-10 rounded-lg", state.backupSchedule === "daily" && "bg-emerald-600 text-white")}
-                                onClick={() => updateState({ backupSchedule: "daily" })}
-                              >Daily</Button>
-                              <Button
-                                variant={state.backupSchedule === "weekly" ? "default" : "outline"}
-                                className={cn("flex-1 h-10 rounded-lg", state.backupSchedule === "weekly" && "bg-emerald-600 text-white")}
-                                onClick={() => updateState({ backupSchedule: "weekly" })}
-                              >Weekly</Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
                     </CardContent>
                  </Card>
 
                  {/* Infrastructure Extensions */}
                  <div className="space-y-6">
-                    {/* System Addons (Card) */}
+                    {/* System Addons Compute */}
                     <Card className="border-2 border-blue-500/10 shadow-lg shadow-blue-500/5 rounded-[32px] overflow-hidden">
                       <div className="p-8 space-y-8">
                         <div className="flex items-center justify-between">
@@ -499,8 +457,8 @@ export function GCPComputeStrategyWizard() {
                               <PlusSquare className="w-5 h-5 text-blue-600" />
                             </div>
                             <div>
-                              <h3 className="text-xl font-black text-slate-900">System Addons</h3>
-                              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Optional extensions</p>
+                              <h3 className="text-xl font-black text-slate-900">System Addons Compute</h3>
+                              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Enable to allocate additional capacity for custom applications, platform extensions, or future growth.</p>
                             </div>
                           </div>
                           <Switch 
@@ -537,55 +495,90 @@ export function GCPComputeStrategyWizard() {
                       </div>
                     </Card>
 
-                    {/* Spot Instances (Only for Production/Enterprise) */}
-                    {state.preset !== "cost" && (
-                      <Card className="border-2 border-blue-500/10 shadow-lg shadow-blue-500/5 rounded-[32px] overflow-hidden">
-                        <div className="p-8 space-y-6">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="p-2 bg-blue-100 rounded-xl">
-                                <DollarSign className="w-5 h-5 text-blue-600" />
-                              </div>
-                              <div>
-                                <h3 className="text-xl font-black text-slate-900">Spot Instances</h3>
-                                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Capacity Optimization</p>
-                              </div>
-                            </div>
-                            <Switch 
-                              checked={state.useSpot} 
-                              onCheckedChange={(v) => updateState({ useSpot: v })}
-                              className="data-[state=checked]:bg-blue-600"
-                            />
-                          </div>
-                          <p className="text-xs text-muted-foreground leading-relaxed">
-                            Utilize spare GCP capacity at significant discounts. Ideal for stateless Trino workers and data processing workloads.
-                          </p>
-                        </div>
-                      </Card>
-                    )}
-
-                    {/* Advanced Iceberg Card */}
-                    <Card className={cn(
-                      "border-2 rounded-2xl transition-all duration-300",
-                      state.isIcebergEnabled ? "border-blue-500 bg-blue-50/10" : "border-border"
-                    )}>
+                    {/* Save Money on Compute (Spot) */}
+                    <Card className="border-2 border-blue-500/10 shadow-lg shadow-blue-500/5 rounded-[32px] overflow-hidden">
                       <div className="p-8 space-y-6">
                         <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-100 rounded-xl">
+                              <DollarSign className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div>
+                              <h3 className="text-xl font-black text-slate-900">Save Money on Compute</h3>
+                              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Uses spare cloud capacity to cut costs by up to 70%. May occasionally restart — not recommended for critical workloads.</p>
+                            </div>
+                          </div>
+                          <Switch 
+                            checked={state.useSpot} 
+                            onCheckedChange={(v) => updateState({ useSpot: v })}
+                            className="data-[state=checked]:bg-blue-600"
+                          />
+                        </div>
+                      </div>
+                    </Card>
+
+                    {/* System Backups */}
+                    <Card className="border-2 border-blue-500/10 shadow-sm overflow-hidden">
+                      <div className="p-8 space-y-8">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-100 rounded-xl">
+                              <ShieldCheck className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-lg">System Backups</h3>
+                              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Enable if you want to store data recovery backups.</p>
+                            </div>
+                          </div>
+                          <Switch
+                            checked={state.isBackupEnabled}
+                            onCheckedChange={(val) => updateState({ isBackupEnabled: val })}
+                            className="data-[state=checked]:bg-blue-600"
+                          />
+                        </div>
+
+                        {state.isBackupEnabled && (
+                          <div className="space-y-6 pt-8 border-t border-blue-500/5 animate-in slide-in-from-top-4 duration-500">
+                            <div className="space-y-4">
+                              <Label className="text-[10px] font-bold text-blue-800 uppercase tracking-widest">Backup Frequency</Label>
+                              <div className="flex gap-2">
+                                {["daily", "weekly"].map((f) => (
+                                  <Button
+                                    key={f}
+                                    variant={state.backupSchedule === f ? "default" : "outline"}
+                                    className={cn("flex-1 h-10 capitalize rounded-lg", state.backupSchedule === f && "bg-blue-600 text-white")}
+                                    onClick={() => updateState({ backupSchedule: f as any })}
+                                  >
+                                    {f}
+                                  </Button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+
+                    {/* Install Datalake (Iceberg) */}
+                    <Card className="border-2 border-blue-500/10 shadow-sm overflow-hidden">
+                      <div className="p-8 space-y-8">
+                        <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                              <span className="text-2xl">🧊</span>
+                              <div className="p-2 bg-blue-100 rounded-xl text-xl">🧊</div>
                               <div>
-                                  <h3 className="text-lg font-bold text-slate-900">Iceberg Data Platform</h3>
-                                  <p className="text-xs text-muted-foreground">Advanced storage & analytics platform</p>
+                                  <h3 className="font-bold text-lg">Install Datalake (Iceberg)</h3>
+                                  <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Organizes massive datasets in your cloud storage (GCS). Provides lightning-fast searching and keeps your data reliable and consistent, like a standard database.</p>
                               </div>
                             </div>
                             <Switch 
                               checked={state.isIcebergEnabled}
                               onCheckedChange={(val) => updateState({ isIcebergEnabled: val })}
+                              className="data-[state=checked]:bg-blue-600"
                             />
                         </div>
 
                       {state.isIcebergEnabled && (
-                        <div className="space-y-8 pt-8 border-t border-blue-100 animate-in slide-in-from-top-4 duration-500">
+                        <div className="space-y-8 pt-8 border-t border-blue-500/5 animate-in slide-in-from-top-4 duration-500">
                            <div className="space-y-4">
                               <div className="flex justify-between items-center">
                                 <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Storage size (GB)</Label>
@@ -593,9 +586,9 @@ export function GCPComputeStrategyWizard() {
                               </div>
                               <Slider 
                                 value={[state.icebergStorageSize]} 
-                                min={20}
+                                min={100}
                                 max={2000}
-                                step={20}
+                                step={100}
                                 onValueChange={([val]) => updateState({ icebergStorageSize: val })}
                               />
                            </div>
@@ -607,7 +600,6 @@ export function GCPComputeStrategyWizard() {
                                     <ShieldCheck className="w-4 h-4 text-blue-600" />
                                     Enable Iceberg Backup
                                   </Label>
-                                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Automated point-in-time recovery</p>
                                 </div>
                                 <Switch
                                   checked={state.isIcebergBackupEnabled}
@@ -661,72 +653,82 @@ export function GCPComputeStrategyWizard() {
 
           <aside className="lg:sticky lg:top-8 space-y-6">
             {/* Combined Summary Card */}
-            <Card className="overflow-hidden border-2 border-blue-500/5 bg-blue-50/10 rounded-[40px] shadow-2xl shadow-blue-500/5">
-              <CardContent className="p-10 space-y-10">
-                <div className="flex items-center gap-2 text-blue-600 font-black text-xs uppercase tracking-widest">
-                  <LayoutGrid className="w-4 h-4" /> Combined Summary
+            <Card className="overflow-hidden border-2 border-blue-500/5 bg-blue-50/5 rounded-2xl shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2 text-blue-700 uppercase tracking-wider font-bold">
+                  <BarChart3 className="w-4 h-4" />
+                  Compute Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">1. Core System Compute</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold">{state.baseMinNodes} node{state.baseMinNodes > 1 ? 's' : ''}</span>
+                        <span className="text-xs text-muted-foreground">({capacityInfo.base.cpu} CPU)</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">2. Hyperlake Compute</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold">
+                          {state.minNodes === state.maxNodes 
+                            ? `${state.minNodes} node` 
+                            : `${state.minNodes} – ${state.maxNodes} nodes`}
+                        </span>
+                        <span className="text-xs text-muted-foreground">({capacityInfo.worker.cpu} CPU/node)</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-blue-500/5">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">3. System Addons Compute</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold">{state.isAddonEnabled ? "Enabled" : "Disabled"}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-blue-500/5">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">4. Save Money on Compute</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold">{state.useSpot ? "Enabled" : "Disabled"}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-blue-500/5">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">5. System Backups</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold">{state.isBackupEnabled ? "Enabled" : "Disabled"}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-blue-500/5">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">6. Install Datalake (Iceberg)</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold">{state.isIcebergEnabled ? "Enabled" : "Disabled"}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-blue-500/5">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">7. Datalake Backups</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold">{state.isIcebergBackupEnabled ? "Enabled" : "Disabled"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-6 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-600/20">
+                    <span className="text-[10px] uppercase font-bold tracking-widest mb-1 block opacity-80">Total Processing Capacity</span>
+                    <div className="text-3xl font-black">
+                      {capacityInfo.minCpu} → {capacityInfo.maxCpu} CPU
+                    </div>
+                  </div>
                 </div>
-
-                <div className="space-y-8">
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">1. Base System</p>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-black text-slate-900">{state.baseMinNodes} machine</span>
-                      <span className="text-sm text-muted-foreground font-medium">({capacityInfo.base.cpu} CPU)</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">2. Data Processing</p>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-black text-slate-900">
-                        {state.minNodes === state.maxNodes 
-                          ? `${state.minNodes} node` 
-                          : `${state.minNodes} – ${state.maxNodes} nodes`}
-                      </span>
-                      <span className="text-sm text-muted-foreground font-medium">({capacityInfo.worker.cpu} CPU/node)</span>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2 pt-4 border-t border-blue-100/50">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">3. System Addons</p>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-black text-slate-900">{state.isAddonEnabled ? "Enabled" : "Disabled"}</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 pt-4 border-t border-blue-100/50">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">4. Automated Backups</p>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-black text-slate-900">{state.isBackupEnabled ? "Enabled" : "Disabled"}</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 pt-4 border-t border-blue-100/50">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">5. Spot Optimization</p>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-black text-slate-900">{state.useSpot ? "Enabled" : "Disabled"}</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 pt-4 border-t border-blue-100/50">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">6. Data Platform</p>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-black text-slate-900">{state.isIcebergEnabled ? "Enabled" : "Disabled"}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-8 bg-blue-600 rounded-[32px] text-white shadow-xl shadow-blue-600/20">
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-2">Total Capacity Range</p>
-                  <p className="text-4xl font-black tracking-tighter">
-                    {capacityInfo.minCpu} → {capacityInfo.maxCpu} CPU
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3 pt-6 border-t border-blue-100 text-muted-foreground">
-                  <Info className="w-4 h-4 text-blue-400 shrink-0" />
-                  <p className="text-[10px] font-medium leading-relaxed">Automatic scaling based on processing workload.</p>
-                </div>
+                <p className="text-[10px] text-muted-foreground flex items-start gap-2 pt-4 border-t border-dashed leading-relaxed">
+                  <Info className="w-3 h-3 text-blue-500 shrink-0 mt-0.5" />
+                  Compute automatically scales based on how busy your system is.
+                </p>
               </CardContent>
             </Card>
           </aside>
@@ -742,7 +744,7 @@ export function GCPComputeStrategyWizard() {
               size="lg" 
               onClick={() => router.push("/gcp/review")}
             >
-              Continue to Review <ChevronRight className="w-6 h-6" />
+              Continue to Launch <ChevronRight className="w-6 h-6" />
             </Button>
           </div>
         </div>

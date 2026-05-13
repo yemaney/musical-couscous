@@ -846,7 +846,7 @@ export function ComputeStrategyWizard() {
             disabled={!allValid}
             className="gap-2 bg-emerald-600 hover:bg-emerald-700 px-8 h-10"
           >
-            Continue to Launch Review
+            Continue to Launch
             <ChevronRight className="w-4 h-4" />
           </Button>
         </div>

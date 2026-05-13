@@ -82,6 +82,7 @@ interface WizardState {
   projectId: string
   createNetwork: boolean
   createStorageBackupSa: boolean
+  gcpProjectId: string
 }
 
 const initialState: WizardState = {
@@ -95,7 +96,7 @@ const initialState: WizardState = {
   networkCidr: "",
   podCidr: "10.1.0.0/16",
   serviceCidr: "10.2.0.0/20",
-  useOwnVpc: true,
+  useOwnVpc: false,
   gcsAccountOption: "create",
   gcsBucketName: "",
   hmacAccessKey: "",
@@ -105,6 +106,7 @@ const initialState: WizardState = {
   projectId: "58498364-0ad4",
   createNetwork: true,
   createStorageBackupSa: true,
+  gcpProjectId: "",
 }
 
 const STEPS = [
@@ -285,9 +287,8 @@ export function GCPCloudSetupWizard() {
     // Identity parameters
     vars.push(`project_id=${state.projectId}`)
     vars.push(`subdomain=${state.subdomain}`)
-    vars.push(`gcp_project_id=[GCP_PROJECT_ID]`)
-    vars.push(`gcp_location=${state.region}`)
-    vars.push(`gcp_zones=["${state.zone1}"]`)
+    vars.push(`gcp_project_id=${state.gcpProjectId || "[GCP_PROJECT_ID]"}`)
+    vars.push(`region=${state.region}`)
 
     // Network parameters
     if (state.useOwnVpc) {
@@ -312,26 +313,28 @@ export function GCPCloudSetupWizard() {
     const inputValues = vars.join(",")
     const deploymentName = `orchestrator-${state.projectId}`
 
-    return `gcloud infra-manager deployments apply "projects/[PROJECT_ID]/locations/${state.region}/deployments/${deploymentName}" \\
+    return `gcloud infra-manager deployments apply "projects/${state.gcpProjectId || "[GCP_PROJECT_ID]"}/locations/${state.region}/deployments/${deploymentName}" \\
   --local-source="." \\
   --input-values='${inputValues}' \\
-  --service-account="projects/[PROJECT_ID]/serviceAccounts/[SERVICE_ACCOUNT]" \\
-  --project="[PROJECT_ID]" \\
+  --service-account="projects/${state.gcpProjectId || "[GCP_PROJECT_ID]"}/serviceAccounts/[SERVICE_ACCOUNT]" \\
+  --project="${state.gcpProjectId || "[GCP_PROJECT_ID]"}" \\
   --location="${state.region}"`
   }
 
   const getOutputsCommand = `REVISION_ID=$(gcloud infra-manager deployments describe "orchestrator-${state.projectId}" \\
+  --project="${state.gcpProjectId || "[GCP_PROJECT_ID]"}" \\
   --location="${state.region}" \\
   --format="value(latestRevision.basename())")
 
 gcloud infra-manager revisions describe "$REVISION_ID" \\
+  --project="${state.gcpProjectId || "[GCP_PROJECT_ID]"}" \\
   --deployment="orchestrator-${state.projectId}" \\
   --location="${state.region}" \\
   --format="json(applyResults.outputs)" > outputs.json`
 
   const saName = `sa-${state.projectId}`.substring(0, 30)
-  const saEmail = `${saName}@[GCP_PROJECT_ID].iam.gserviceaccount.com`
-  const createHmacKeyCommand = `gcloud storage hmac create "${saEmail}" --project="[GCP_PROJECT_ID]"`
+  const saEmail = `${saName}@${state.gcpProjectId || "[GCP_PROJECT_ID]"}.iam.gserviceaccount.com`
+  const createHmacKeyCommand = `gcloud storage hmac create "${saEmail}" --project="${state.gcpProjectId || "[GCP_PROJECT_ID]"}"`
 
   const canGoNext = () => {
     switch (currentStep) {
@@ -418,7 +421,16 @@ gcloud infra-manager revisions describe "$REVISION_ID" \\
             
             <div className="grid gap-8 max-w-2xl mx-auto">
               <div className="space-y-6">
-                <div className="grid sm:grid-cols-2 gap-8">
+                <div className="grid sm:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Google Project ID</Label>
+                    <Input
+                      value={state.gcpProjectId}
+                      onChange={(e) => updateState({ gcpProjectId: e.target.value })}
+                      placeholder="my-gcp-project-123"
+                      className="h-12 rounded-xl"
+                    />
+                  </div>
                   <div className="space-y-2">
                     <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">GCP Region</Label>
                     <Select
@@ -739,7 +751,7 @@ gcloud infra-manager revisions describe "$REVISION_ID" \\
               </div>
             </div>
             <Button size="lg" className="bg-blue-600 hover:bg-blue-700 h-16 px-12 text-lg font-bold rounded-2xl shadow-xl shadow-blue-600/20 group" onClick={() => router.push("/gcp/cluster-setup")}>
-              Next: Configure Cluster <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+              Next: System Review <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
             </Button>
           </div>
         )
@@ -802,15 +814,6 @@ gcloud infra-manager revisions describe "$REVISION_ID" \\
                 </nav>
               </div>
               
-              <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100 space-y-3">
-                <div className="flex items-center gap-2 text-blue-700">
-                  <Shield className="w-4 h-4" />
-                  <span className="text-[10px] font-black uppercase tracking-wider">Secure Setup</span>
-                </div>
-                <p className="text-[10px] text-blue-600 leading-relaxed">
-                  Your configuration is encrypted and stored locally in your browser.
-                </p>
-              </div>
             </div>
           </aside>
 
